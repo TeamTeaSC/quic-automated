@@ -21,6 +21,10 @@ def generate_cmds(config_file: str):
     delay: int = network_configs.get('delay')
     bw: int = network_configs.get('bw')
 
+    includeLoss  = (loss != 0)
+    includeDelay = (delay != 0)
+    
+
     loss_str =  f'{loss}.000000%'
     delay_str = f'{delay//2}.0ms'
     bw_str =    f'{bw}000.0Kbit'
