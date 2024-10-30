@@ -2,6 +2,7 @@
   "network": {
     "loss": 0,
     "delay": 0,
-    "bw": 10
+    "bw": 10,
+    "jitter": 0
   }
 }

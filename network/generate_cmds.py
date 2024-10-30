@@ -17,17 +17,19 @@ def generate_cmds(config_file: str):
         print("Error: network configs not provided, exiting.")
         return
     
-    loss: int = network_configs.get('loss')
-    delay: int = network_configs.get('delay')
-    bw: int = network_configs.get('bw')
+    loss  : int = network_configs.get('loss')
+    delay : int = network_configs.get('delay')
+    bw    : int = network_configs.get('bw')
+    jitter: int = network_configs.get('jitter')
 
-    includeLoss  = (loss != 0)
-    includeDelay = (delay != 0)
-    
+    includeLoss   = (loss != 0)
+    includeDelay  = (delay != 0)
+    includeJitter = (jitter != 0)
 
-    loss_str =  f'{loss}.000000%'
-    delay_str = f'{delay//2}.0ms'
-    bw_str =    f'{bw}000.0Kbit'
+    loss_str =   f' loss {loss}.000000%' if includeLoss else ''
+    delay_str =  f' delay {delay//2}.0ms' if includeDelay else ''
+    bw_str =     f'{bw}000.0Kbit'
+    jitter_str = f' {jitter}.0ms' if includeJitter else ''
 
     # Calculate bandwidth burst
     bw_burst = bw * 10**3 * 1.25
@@ -66,7 +68,7 @@ def generate_cmds(config_file: str):
                 f'burst {bw_burst_str} cburst {bw_burst_str}'))
     # attach netem qdisc to HTB class 1a64:104 with provided loss and delay
     cmds.append(('/sbin/tc qdisc add dev eth0 parent 1a64:104 handle 2054: '
-                f'netem loss {loss_str} delay {delay_str}'))
+                f'netem{loss_str}{delay_str}{jitter_str}'))
     # add filter with priority 5, redirecting all traffic to 1a64:104
     cmds.append(('/sbin/tc filter add dev ens192 protocol ip parent 1a64: '
                  'prio 5 u32 match ip dst 0.0.0.0/0 match ip src 0.0.0.0/0 '
@@ -100,9 +102,9 @@ def generate_cmds(config_file: str):
     cmds.append(('/sbin/tc class add dev ifb6756 parent 1a64: '
                  f'classid 1a64:104 htb rate {bw_str} ceil {bw_str} '
                  f'burst {bw_burst_str} cburst {bw_burst_str}'))
-    # attach netem qdisc to HTB class 1a64:104 with provided loss and delay
+    # attach default netem qdisc to HTB class 1a64:104
     cmds.append(('/sbin/tc qdisc add dev ifb6756 parent 1a64:104 handle 2054: '
-                f'netem loss {loss_str} delay {delay_str}'))
+                f'netem'))
     # redirects all ingress traffic to IFB to 1a64:104
     cmds.append(('/sbin/tc filter add dev ifb6756 protocol ip parent 1a64: '
                  'prio 5 u32 match ip dst 0.0.0.0/0 match ip src 0.0.0.0/0 '
