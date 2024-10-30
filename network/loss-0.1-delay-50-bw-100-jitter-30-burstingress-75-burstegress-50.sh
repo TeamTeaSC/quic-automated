@@ -6,9 +6,9 @@
 /usr/bin/ip link delete ifb6756 type ifb
 
 /sbin/tc qdisc add dev eth0 root handle 1a64: htb default 1
-/sbin/tc class add dev eth0 parent 1a64: classid 1a64:1 htb rate {ROOT_TRAFFIC_RATE_LIMIT}kbit
-/sbin/tc class add dev eth0 parent 1a64: classid 1a64:104 htb rate 10000.0Kbit ceil 10000.0Kbit burst 12500.0KB cburst 12500.0KB
-/sbin/tc qdisc add dev eth0 parent 1a64:104 handle 2054: netem loss 0.000000% delay 0.0ms
+/sbin/tc class add dev eth0 parent 1a64: classid 1a64:1 htb rate 10000000.0kbit
+/sbin/tc class add dev eth0 parent 1a64: classid 1a64:104 htb rate 100000.0Kbit ceil 100000.0Kbit burst 125000.0KB cburst 125000.0KB
+/sbin/tc qdisc add dev eth0 parent 1a64:104 handle 2054: netem loss 0.100000% 50% delay 25.0ms 30.0ms
 /sbin/tc filter add dev ens192 protocol ip parent 1a64: prio 5 u32 match ip dst 0.0.0.0/0 match ip src 0.0.0.0/0 flowid 1a64:104
 
 modprobe ifb
@@ -19,7 +19,7 @@ modprobe ifb
 
 /sbin/tc qdisc add dev ifb6756 root handle 1a64: htb default 1
 /sbin/tc class add dev ifb6756 parent 1a64: classid 1a64:1 htb rate 10000000.0kbit
-/sbin/tc class add dev ifb6756 parent 1a64: classid 1a64:104 htb rate 10000.0Kbit ceil 10000.0Kbit burst 12500.0KB cburst 12500.0KB
-/sbin/tc qdisc add dev ifb6756 parent 1a64:104 handle 2054: netem loss 0.000000% delay 0.0ms
+/sbin/tc class add dev ifb6756 parent 1a64: classid 1a64:104 htb rate 100000.0Kbit ceil 100000.0Kbit burst 125000.0KB cburst 125000.0KB
+/sbin/tc qdisc add dev ifb6756 parent 1a64:104 handle 2054: netem loss 0.100000% 75%
 /sbin/tc filter add dev ifb6756 protocol ip parent 1a64: prio 5 u32 match ip dst 0.0.0.0/0 match ip src 0.0.0.0/0 flowid 1a64:104
 

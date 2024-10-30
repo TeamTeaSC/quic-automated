@@ -1,8 +1,10 @@
 {
   "network": {
-    "loss": 0,
-    "delay": 0,
-    "bw": 10,
-    "jitter": 0
+    "loss": 0.1,
+    "delay": 50,
+    "bw": 100,
+    "jitter": 30,
+    "burst_ingress": 75,
+    "burst_egress": 50
   }
 }
