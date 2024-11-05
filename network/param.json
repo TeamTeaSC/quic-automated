@@ -1,4 +1,6 @@
-{
+{ 
+  "client": "proxygen",
+  "endpoint": "https://www.cmu.edu/common/standard-v6/images/cmu-wordmark.png",
   "network": {
     "loss": 0.1,
     "delay": 50,
