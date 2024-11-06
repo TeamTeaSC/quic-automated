@@ -1,6 +1,6 @@
 { 
-  "client": "proxygen",
-  "endpoint": "https://www.cmu.edu/common/standard-v6/images/cmu-wordmark.png",
+  "clients": ["curl_h2"],
+  "endpoint": "https://scontent.xx.fbcdn.net/speedtest-100KB",
   "network": {
     "loss": 0.1,
     "delay": 50,
