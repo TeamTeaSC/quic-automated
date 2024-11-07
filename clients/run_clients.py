@@ -5,29 +5,58 @@ import subprocess
 from urllib.parse import urlparse
 
 TMP_PCAP_DIR = './tmp'
+PCAP_OUT_DIR = './pcap'
+DIRS = [TMP_PCAP_DIR, 
+        PCAP_OUT_DIR]
 
+# Make all directories in DIRS (if they don't exist)
 def make_dirs():
-    if not os.path.exists(TMP_PCAP_DIR):
-        os.makedirs(TMP_PCAP_DIR)
+    for DIR in DIRS:
+        if not os.path.exists(DIR):
+            os.makedirs(DIR)
+    
 
+# Start tcpdump
 def run_pcap(url_host: str, url_port: str | None, url_path: str):
     process = subprocess.Popen([
         'sudo',
-        'tcpdump',
+        'tshark',
+        '-f',
         f'tcp and host {url_host}',  # filter for TCP and host traffic
-        '-i',                        # filter by interface
+        '-i',                        # capture on interface
         'eth0',
         '-w',
         f'{TMP_PCAP_DIR}/out.pcap'
     ])
     return process
 
+# Convert pcap files into JSON
 def read_pcap():
-    filepath = f'{TMP_PCAP_DIR}/out.pcap'
-    output = subprocess.run([
+    curr_time = time.strftime("%Y-%m-%d-%H:%M:%S", time.gmtime())
+    read_path = f'{TMP_PCAP_DIR}/out.pcap'
+    write_path = f'{PCAP_OUT_DIR}/out-{curr_time}.json'
 
-    ], capture_output=True)
-    return
+    cmd = ' '.join([
+        'tshark',
+        f'-r {read_path}',  # read pcap file
+        '-T json',          # output format = JSON
+        '-e ip.src',        # ip source address
+        '-e ip.dst',        # ip destination address
+        '-e tcp',           # tcp summary
+        '-e tcp.srcport',   # tcp source port
+        '-e tcp.dstport',   # tcp destination port
+        '-e tcp.len',       # tcp len (bytes)
+        '-e tcp.seq',       # tcp sequence number
+        '-e tcp.ack',       # tcp ack
+        '-e tcp.flags',     # tcp flags
+        '-e frame.time',    # timestamp (of ethernet frame)
+        f'> {write_path}'   # write JSON file
+    ])
+
+    output = subprocess.run([cmd],
+                            capture_output=True, 
+                            shell=True)
+    return output
 
 def run_benchmark(config_file: str):
     # Make directories
@@ -64,6 +93,7 @@ def run_client(client: str, endpoint: str, iters: int):
     cmds: list[str] = client_cmds(client, endpoint, url_host, url_port, url_path)
 
     for _ in range(iters):
+        # start recording pcap
         pcap_process = run_pcap(url_host, url_port, url_path)
         time.sleep(1)
 
@@ -73,6 +103,9 @@ def run_client(client: str, endpoint: str, iters: int):
         time.sleep(1)
         pcap_process.kill()
         # print(output)
+
+        pcap_output = read_pcap()
+        print(pcap_output)
 
 def client_cmds(client: str, endpoint: str, url_host: str, url_port: str | None, 
                 url_path: str) -> list[str]:
