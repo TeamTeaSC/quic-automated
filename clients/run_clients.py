@@ -4,6 +4,7 @@ import time
 import subprocess
 from urllib.parse import urlparse
 
+# Directories
 TMP_PCAP_DIR = './tmp'
 PCAP_OUT_DIR = './pcap'
 DIRS = [TMP_PCAP_DIR, 
@@ -19,7 +20,6 @@ def make_dirs():
 # Use tshark capture packets
 def run_pcap(url_host: str, url_port: str | None, url_path: str):
     process = subprocess.Popen([
-        'sudo',
         'tshark',
         '-f',
         f'host {url_host}',         # filter for only host traffic
@@ -75,6 +75,38 @@ def read_pcap(is_h3: bool):
                             shell=True)
     return output
 
+# Generate commands for client targeting endpoint.
+# Returns [] if client string is invalid.
+def client_cmds(client: str, endpoint: str, url_host: str, url_port: str | None, 
+                url_path: str) -> list[str]:
+    cmds = []
+    match client:
+        case 'curl_h2':
+            cmds.append('curl')      
+            cmds.append('--http2')   # use http2
+            cmds.append(endpoint)    # target endpoint
+
+        case 'proxygen_h3':
+            cmds.append('/home/shchien/proxygen/proxygen/_build/proxygen/httpserver/hq')  
+            cmds.append('--mode=client')              # cliet mode
+            cmds.append('--protocol=h3')              # use http3
+            cmds.append('--quic_version=1')           # use quic version 1
+            cmds.append(f'--host={url_host}')         # host
+            cmds.append(f'--port={url_port or 443}')  # port (default to 443)
+            cmds.append(f'--path={url_path}')         # path
+
+        case 'ngtcp2_h3':  
+            cmds.append('/home/shchien/ngtcp2/examples/wsslclient')
+            cmds.append('--exit-on-all-streams-close')  # close all streams upon exit
+            cmds.append(f'{url_host}')         # host
+            cmds.append(f'{url_port or 443}')  # port (default to 443)
+            cmds.append(f'{endpoint}')         # complete url
+
+        case _:  # invalid client provided, return []
+            pass
+
+    return cmds
+
 # Run benchmark across all clients
 def run_benchmark(config_file: str):
     print(f'--- START BENCHMARK ---\n')
@@ -121,16 +153,16 @@ def run_client(client: str, endpoint: str, iters: int):
     # generate client commands
     cmds: list[str] = client_cmds(client, endpoint, url_host, url_port, url_path)
     if cmds == []:
-        print("Error: client field is invalid, exiting.")
+        print(f'Error: client field is invalid ({client}), exiting.')
         return
 
     for i in range(iters):
-        print(f'--- CLIENT {client} : ITER {i} ---\n')
+        print(f'--- CLIENT {client} : ITERATION {i} ---\n')
         # start recording pcap
         pcap_process = run_pcap(url_host, url_port, url_path)
-        time.sleep(1)
 
         # hit endpoint
+        time.sleep(1)
         output = subprocess.run(cmds, capture_output=True)
         # print(output)
         
@@ -139,35 +171,11 @@ def run_client(client: str, endpoint: str, iters: int):
         pcap_process.kill()
         
         # read pcap into JSON
+        time.sleep(1)
         pcap_output = read_pcap(is_h3)
         print(pcap_output)
     
     print(f'--- STOP CLIENT: {client} ---\n')
-
-# Generate commands for client targeting endpoint.
-# Returns [] if client string is invalid.
-def client_cmds(client: str, endpoint: str, url_host: str, url_port: str | None, 
-                url_path: str) -> list[str]:
-    cmds = []
-    match client:
-        case 'curl_h2':
-            cmds.append('curl')      
-            cmds.append('--http2')   # use http2
-            cmds.append(endpoint)    # target endpoint
-
-        case 'proxygen_h3':
-            cmds.append('/home/shchien/proxygen/proxygen/_build/proxygen/httpserver/hq')  
-            cmds.append('--mode=client')              # cliet mode
-            cmds.append('--protocol=h3')              # use http3
-            cmds.append('--quic_version=1')           # use quic version 1
-            cmds.append(f'--host={url_host}')         # host
-            cmds.append(f'--port={url_port or 443}')  # port (default to 443)
-            cmds.append(f'--path={url_path}')         # path
-
-        case _:  # invalid client provided, return []
-            pass
-
-    return cmds
             
 
 run_benchmark('./network/param.json')

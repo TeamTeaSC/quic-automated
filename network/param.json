@@ -1,5 +1,5 @@
 { 
-  "clients": ["curl_h2", "proxygen_h3"],
+  "clients": ["curl_h2", "proxygen_h3", "ngtcp2_h3"],
   "endpoint": "https://scontent.xx.fbcdn.net/speedtest-100KB",
   "network": {
     "loss": 0.1,
