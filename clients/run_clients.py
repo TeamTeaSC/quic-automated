@@ -8,14 +8,13 @@ from urllib.parse import urlparse
 TMP_PCAP_DIR = './tmp'
 PCAP_OUT_DIR = './pcap'
 DIRS = [TMP_PCAP_DIR, 
-        PCAP_OUT_DIR]
+        PCAP_OUT_DIR]   
 
 # Make all directories in DIRS (if they don't exist)
-def make_dirs():
+def make_dirs(DIRS: list[str]):
     for DIR in DIRS:
         if not os.path.exists(DIR):
-            os.makedirs(DIR)
-    
+            os.makedirs(DIR) 
 
 # Use tshark capture packets
 def run_pcap(url_host: str, url_port: str | None, url_path: str):
@@ -55,19 +54,10 @@ def read_pcap(is_h3: bool):
     else:  # filter for TCP packets
         cmd = ' '.join([
             'tshark',
-            f'-r {read_path}',  # read pcap file
-            '-T json',          # output format = JSON
-            '-e ip.src',        # ip source address
-            '-e ip.dst',        # ip destination address
-            '-e tcp',           # tcp summary
-            '-e tcp.srcport',   # tcp source port
-            '-e tcp.dstport',   # tcp destination port
-            '-e tcp.len',       # tcp len (bytes)
-            '-e tcp.seq',       # tcp sequence number
-            '-e tcp.ack',       # tcp ack
-            '-e tcp.flags',     # tcp flags
-            '-e frame.time',    # timestamp (of ethernet frame)
-            f'> {write_path}'   # write JSON file
+            f'-r {read_path}',   # read pcap file
+            '-T json',           # output format = JSON
+            '-J tcp',
+            f'> {write_path}'    # write JSON file
         ])
 
     output = subprocess.run([cmd],
@@ -112,7 +102,7 @@ def run_benchmark(config_file: str):
     print(f'--- START BENCHMARK ---\n')
 
     # Make directories
-    make_dirs()
+    make_dirs(DIRS)
 
     # Read JSON file containing configs
     with open(config_file) as f:
