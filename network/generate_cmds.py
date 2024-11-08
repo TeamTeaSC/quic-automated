@@ -7,7 +7,9 @@ def write_cmds(f, cmds: list[str]):
         f.write(f'{cmd}\n')
     f.write('\n')
 
-def generate_cmds(config_file: str):
+# Generates shell commands for provided network parameters.
+# Both writes command to file and returns commands as list of strings.
+def generate_cmds(config_file: str) -> list[str]:
     # Read JSON file containing network parameters
     with open(config_file) as f:
         d = json.load(f)
@@ -62,11 +64,11 @@ def generate_cmds(config_file: str):
     # delete ingress qdisc on eth0
     cmds.append('/sbin/tc qdisc del dev eth0 ingress') 
     # delete root qdisc on IFB
-    cmds.append('/sbin/tc qdisc del dev ifb6756 root')  
+    cmds.append('/sbin/tc qdisc del dev ifb0 root')  
     # disable IFB interface    
-    cmds.append('/usr/bin/ip link set dev ifb6756 down')    
+    cmds.append('/usr/bin/ip link set dev ifb0 down')    
     # delete IFB interface
-    cmds.append('/usr/bin/ip link delete ifb6756 type ifb') 
+    cmds.append('/usr/bin/ip link delete ifb0 type ifb') 
     write_cmds(f, cmds)
 
     # Setup HTB (hierarchical token bucket) and netem on eth0 root
@@ -93,37 +95,39 @@ def generate_cmds(config_file: str):
     cmds = []
     # load IFB kernel module
     cmds.append('modprobe ifb')
-    # create new IFB interface ifb6756
-    cmds.append('/usr/bin/ip link add ifb6756 type ifb')
+    # create new IFB interface ifb0
+    cmds.append('/usr/bin/ip link add ifb0 type ifb')
     # enable IFB interface
-    cmds.append('/usr/bin/ip link set dev ifb6756 up')
+    cmds.append('/usr/bin/ip link set dev ifb0 up')
     # add ingress qdisc on eth0
     cmds.append('/sbin/tc qdisc add dev eth0 ingress')
     # redirects all ingress traffic to IFB
     cmds.append(('/sbin/tc filter add dev ens192 parent ffff: '
                  'protocol ip u32 match u32 0 0 flowid 1a64: '
-                 'action mirred egress redirect dev ifb6756'))
+                 'action mirred egress redirect dev ifb0'))
     write_cmds(f, cmds)
 
     # Setup HTB and netem on IFB
     cmds = []
     # add qdisc to IFB root with handle 1a64: and classID 1
-    cmds.append('/sbin/tc qdisc add dev ifb6756 root handle 1a64: htb default 1')
+    cmds.append('/sbin/tc qdisc add dev ifb0 root handle 1a64: htb default 1')
     # create HTB class 1a64:1 
-    cmds.append(('/sbin/tc class add dev ifb6756 parent 1a64: '
+    cmds.append(('/sbin/tc class add dev ifb0 parent 1a64: '
                 f'classid 1a64:1 htb rate {ROOT_TRAFFIC_RATE_LIMIT}kbit'))
     # create another HTB class 1a64:104 with provided bw
-    cmds.append(('/sbin/tc class add dev ifb6756 parent 1a64: '
+    cmds.append(('/sbin/tc class add dev ifb0 parent 1a64: '
                  f'classid 1a64:104 htb rate {bw_str} ceil {bw_str} '
                  f'burst {bw_burst_str} cburst {bw_burst_str}'))
     # attach netem qdisc to HTB class 1a64:104 with provided loss, burst ingress
-    cmds.append(('/sbin/tc qdisc add dev ifb6756 parent 1a64:104 handle 2054: '
+    cmds.append(('/sbin/tc qdisc add dev ifb0 parent 1a64:104 handle 2054: '
                 f'netem{loss_str}{burst_ingress_str}'))
     # redirects all ingress traffic to IFB to 1a64:104
-    cmds.append(('/sbin/tc filter add dev ifb6756 protocol ip parent 1a64: '
+    cmds.append(('/sbin/tc filter add dev ifb0 protocol ip parent 1a64: '
                  'prio 5 u32 match ip dst 0.0.0.0/0 match ip src 0.0.0.0/0 '
                  'flowid 1a64:104'))
     write_cmds(f, cmds)
+
+    return cmds
     
 # test
-generate_cmds('./network/param.json')
+# generate_cmds('./param.json')

@@ -64,5 +64,6 @@ def generate_plot(pcap_file: str):
     plot_file = str.replace(plot_file, 'pcap', PLOTS_DIR)
     plt.savefig(plot_file, format='pdf', bbox_inches='tight')
 
-file_name = './pcap/out-2024-11-08-02:10:10.json'
-generate_plot(file_name)
+# test
+# file_name = './pcap/out-2024-11-08-02:10:10.json'
+# generate_plot(file_name)

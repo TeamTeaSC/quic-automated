@@ -17,7 +17,7 @@ def make_dirs(DIRS: list[str]):
             os.makedirs(DIR) 
 
 # Use tshark capture packets
-def run_pcap(url_host: str, url_port: str | None, url_path: str):
+def run_pcap(pcap_file: str, url_host: str, url_port: str | None, url_path: str):
     process = subprocess.Popen([
         'tshark',
         '-f',
@@ -25,15 +25,13 @@ def run_pcap(url_host: str, url_port: str | None, url_path: str):
         '-i'
         'eth0',                     # capture on eth0 interface
         '-w',
-        f'{TMP_PCAP_DIR}/out.pcap', # write to temp file
+        f'{pcap_file}', # write to temp file
     ])
     return process
 
-# Convert pcap file into JSON
-def read_pcap(is_h3: bool):
-    curr_time = time.strftime("%Y-%m-%d-%H:%M:%S", time.gmtime())
+# Convert pcap file into JSON, returns process exit
+def read_pcap(is_h3: bool, write_path: str) -> str:
     read_path = f'{TMP_PCAP_DIR}/out.pcap'
-    write_path = f'{PCAP_OUT_DIR}/out-{curr_time}.json'
 
     if is_h3:  # filter for QUIC packets
         cmd = ' '.join([
@@ -97,8 +95,58 @@ def client_cmds(client: str, endpoint: str, url_host: str, url_port: str | None,
 
     return cmds
 
-# Run benchmark across all clients
-def run_benchmark(config_file: str):
+# Run client iters-many times.
+# Returns a list of output file names (packet traces in JSON).
+def run_client(client: str, endpoint: str, iters: int) -> list[str]:
+    print(f'--- START CLIENT: {client} ---\n')
+
+    # determine if client is h2 or h3
+    is_h3 = ('h3' in client)
+
+    # parse endpoint
+    url_obj = urlparse(endpoint)
+    url_host: str = url_obj.hostname
+    url_port: str = url_obj.port
+    url_path: str = url_obj.path
+    print(url_host, url_port, url_path)
+
+    # generate client commands
+    cmds: list[str] = client_cmds(client, endpoint, url_host, url_port, url_path)
+    if cmds == []:
+        print(f'Error: client field is invalid ({client}), exiting.')
+        return
+    
+    outputs = []
+    for i in range(iters):
+        print(f'--- CLIENT {client} : ITERATION {i} ---\n')
+        # start recording pcap
+        curr_time = time.strftime("%Y-%m-%d-%H:%M:%S", time.gmtime())
+        pcap_file = f'{TMP_PCAP_DIR}/out-{curr_time}.pcap'
+        pcap_process = run_pcap(pcap_file, url_host, url_port, url_path)
+
+        # hit endpoint
+        time.sleep(1)
+        output = subprocess.run(cmds, capture_output=True)
+        # print(output)
+        
+        # stop recording pcap
+        time.sleep(1)
+        pcap_process.kill()
+        
+        # read pcap into JSON
+        time.sleep(1)
+        curr_time = time.strftime("%Y-%m-%d-%H:%M:%S", time.gmtime())
+        json_file = f'{PCAP_OUT_DIR}/out-{curr_time}.json'
+        outputs.append(json_file)
+        pcap_output = read_pcap(is_h3, pcap_file, json_file)
+        print(pcap_output)
+    
+    print(f'--- STOP CLIENT: {client} ---\n')
+    return outputs
+
+# Run benchmark across all clients.
+# For each client, returns a list containing all JSON output files.
+def run_benchmark(config_file: str) -> dict[str, list[str]]:
     print(f'--- START BENCHMARK ---\n')
 
     # Make directories
@@ -121,51 +169,13 @@ def run_benchmark(config_file: str):
         return
     
     iters = 1  # number of iterations to run tests for
+    outputs = {}
     for client in clients:
-        run_client(client, endpoint, iters)
-
-    print(f'--- END BENCHMARK ---\n')
-
-# Run client iters-many times
-def run_client(client: str, endpoint: str, iters: int):
-    print(f'--- START CLIENT: {client} ---\n')
-
-    # determine if client is h2 or h3
-    is_h3 = ('h3' in client)
-
-    # parse endpoint
-    url_obj = urlparse(endpoint)
-    url_host: str = url_obj.hostname
-    url_port: str = url_obj.port
-    url_path: str = url_obj.path
-    print(url_host, url_port, url_path)
-
-    # generate client commands
-    cmds: list[str] = client_cmds(client, endpoint, url_host, url_port, url_path)
-    if cmds == []:
-        print(f'Error: client field is invalid ({client}), exiting.')
-        return
-
-    for i in range(iters):
-        print(f'--- CLIENT {client} : ITERATION {i} ---\n')
-        # start recording pcap
-        pcap_process = run_pcap(url_host, url_port, url_path)
-
-        # hit endpoint
-        time.sleep(1)
-        output = subprocess.run(cmds, capture_output=True)
-        # print(output)
-        
-        # stop recording pcap
-        time.sleep(1)
-        pcap_process.kill()
-        
-        # read pcap into JSON
-        time.sleep(1)
-        pcap_output = read_pcap(is_h3)
-        print(pcap_output)
+        client_out: list[str] = run_client(client, endpoint, iters)
+        outputs[client] = client_out
     
-    print(f'--- STOP CLIENT: {client} ---\n')
-            
+    print(f'--- END BENCHMARK ---\n')    
+    return outputs
 
-run_benchmark('./network/param.json')
+# test
+# run_benchmark('./param.json')
