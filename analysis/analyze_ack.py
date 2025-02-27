@@ -1,13 +1,17 @@
+# --- Import external libraries ---
 import os
 import json
 import numpy as np
 from matplotlib import pyplot as plt
 
-# Directories
+# --- Import internal files ---
+from analysis.changepoint import predict_changepoints
+
+# --- Directories ---
 PLOTS_DIR = './plots'
 DIRS = [PLOTS_DIR]
 
-# Constants
+# --- Constants ---
 ACK_TYPE = '0x0000000000000002'
 
 # Make all directories in DIRS (if they don't exist)
@@ -107,7 +111,7 @@ def analyze_pcap_quic(pcap_file: str):
                 if quic_short is not None:
                     pkt_num = quic_short.get('quic.packet_number')
             if pkt_num is None:
-                print('[ERROR] could not find packet number, skipping.')
+                # print('[ERROR] could not find packet number, skipping.')
                 continue
             pkt_num = int(pkt_num)
 
@@ -122,7 +126,7 @@ def analyze_pcap_quic(pcap_file: str):
                 bytes_outstanding[pkt_num] = 0
             bytes_outstanding[pkt_num] += pkt_len
 
-            print(pkt_num, pkt_len)
+            # print(pkt_num, pkt_len)
 
             # convert frames to list (even if only 1 element)
             frames = quic['quic.frame']
@@ -134,7 +138,7 @@ def analyze_pcap_quic(pcap_file: str):
                 if (frame['quic.frame_type'] == ACK_TYPE) and (not is_receive):
                     ack = int(frame['quic.ack.largest_acknowledged'])
                     ack_range = int(frame['quic.ack.first_ack_range'])
-                    print('ACK:', ack, ack_range)
+                    # print('ACK:', ack, ack_range)
 
                     # calculate bytes ACKed by this ACK frame
                     bytes_acked = 0
@@ -189,6 +193,11 @@ def generate_plot_tcp(pcap_file: str, client: str | None = None):
     plot_file = str.replace(pcap_file, 'json', 'pdf')
     plot_file = str.replace(plot_file, 'pcap', PLOTS_DIR)
     plt.savefig(plot_file, format='pdf', bbox_inches='tight')
+
+    # Changepoint detection
+    signal: np.ndarray = np.array(acks)
+    brkps = predict_changepoints(signal)
+    print("BREAKPOINTS:", brkps)
 
 def generate_plot_quic(pcap_file: str, client: str | None = None):
     print(f'--- GENERATING QUIC PLOT FOR {pcap_file} ---')
