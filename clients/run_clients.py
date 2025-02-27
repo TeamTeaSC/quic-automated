@@ -99,9 +99,6 @@ def client_cmds(client: str, endpoint: str, url_host: str, url_port: str | None,
 def run_client(client: str, endpoint: str, iters: int) -> list[str]:
     print(f'--- START CLIENT: {client} ---\n')
 
-    # timestamp files
-    curr_time = time.strftime("%Y-%m-%d-%H:%M:%S", time.gmtime())
-
     # determine if client is h2 or h3
     is_h3 = ('h3' in client)
 
@@ -117,15 +114,19 @@ def run_client(client: str, endpoint: str, iters: int) -> list[str]:
     if cmds == []:
         print(f'Error: client field is invalid ({client}), exiting.')
         return
-    
-    # setup OS environment (to log TLS keys)
-    ssl_key_log_file = SSL_KEY_LOG_DIR.joinpath(f'ssl-{curr_time}.txt')
-    env = os.environ.copy()
-    env['SSLKEYLOGFILE'] = ssl_key_log_file
 
     outputs = []
     for i in range(iters):
         print(f'--- CLIENT {client} : ITERATION {i} ---\n')
+        
+        # timestamp files
+        curr_time = time.strftime("%Y-%m-%d-%H:%M:%S", time.gmtime())
+
+        # setup OS environment to log TLS keys
+        ssl_key_log_file = SSL_KEY_LOG_DIR.joinpath(f'ssl-{curr_time}.txt')
+        env = os.environ.copy()
+        env['SSLKEYLOGFILE'] = ssl_key_log_file
+
         # start recording pcap
         pcap_file = f'{TMP_PCAP_DIR}/out-{curr_time}.pcap'
         pcap_process = run_pcap(pcap_file, url_host, url_port, url_path, env)
@@ -171,7 +172,11 @@ def run_benchmark(config_file: str) -> dict[str, list[str]]:
         print("Error: endpoint field is empty, exiting.")
         return
     
-    iters = 1  # number of iterations to run tests for
+    # Get number of iterations for each client
+    iters: int = d.get('iters')
+    if iters is None:
+        iters = 1  # default number of iterations
+
     outputs = {}
     for client in clients:
         client_out: list[str] = run_client(client, endpoint, iters)

@@ -34,7 +34,12 @@ def analyze_pcap_tcp(pcap_file: str):
     acks = []
     rtts = []
     is_fin = False
-    initial_rtt = None
+
+    initial_rtt = None   # RTT measured from initial handshake
+    curr_rtt: int = 0    # current RTT
+    cum_ack_prev = 0     # cumulative ack from previous RTT window
+    cum_ack_curr = 0     # cumulative ack from current RTT window
+    cum_acks = []        # cumulative ack within each RTT window
 
     for packet in d:
         if is_fin:
@@ -62,13 +67,22 @@ def analyze_pcap_tcp(pcap_file: str):
             times.append(time)
             seqs.append(seq)
             acks.append(ack)
-            rtts.append(time / initial_rtt)
 
+            rtt = time / initial_rtt
+            rtts.append(rtt)
+
+            if int(rtt) > curr_rtt:
+                curr_rtt = int(rtt)
+                cum_ack_curr = cum_ack_prev
+            cum_ack_prev = ack
+            cum_acks.append(ack - cum_ack_curr)
+            
     return {
         'times': np.array(times),
         'rtts': np.array(rtts),
         'seqs': np.array(seqs),
-        'acks': np.array(acks)
+        'acks': np.array(acks),
+        'cum_acks': np.array(cum_acks)
     }
 
 # Analyze QUIC PCAP file and returns data points: ([RTT], [bytes acked])
@@ -177,12 +191,12 @@ def generate_plot_tcp(pcap_file: str, client: str | None = None):
     make_dirs(DIRS)
 
     res = analyze_pcap_tcp(pcap_file)
-    times, rtts, seqs, acks = res['times'], res['rtts'], res['seqs'], res['acks']
+    rtts, acks, cum_acks = res['rtts'], res['acks'], res['cum_acks']
 
     plt.close('all')  # close all previously opened plots
 
     # Generate scatterplot
-    plt.scatter(rtts, acks)
+    plt.scatter(rtts, cum_acks)
     plt.xlabel('RTT')
     plt.ylabel('bytes acked')
 
@@ -190,14 +204,17 @@ def generate_plot_tcp(pcap_file: str, client: str | None = None):
     title: str = get_plot_title(client)
     plt.title(title)
 
+    # Changepoint detection
+    brkps = predict_changepoints(rtts, cum_acks)
+    print("BREAKPOINTS:", brkps)
+
+    for brkp in brkps[:-1]:  # ignore last breakpoint since it is signal length
+        plt.axvline(x=rtts[brkp], color='r', linestyle='--', alpha=0.7)
+
     plot_file = str.replace(pcap_file, 'json', 'pdf')
     plot_file = str.replace(plot_file, 'pcap', PLOTS_DIR)
     plt.savefig(plot_file, format='pdf', bbox_inches='tight')
 
-    # Changepoint detection
-    signal: np.ndarray = np.array(acks)
-    brkps = predict_changepoints(signal)
-    print("BREAKPOINTS:", brkps)
 
 def generate_plot_quic(pcap_file: str, client: str | None = None):
     print(f'--- GENERATING QUIC PLOT FOR {pcap_file} ---')
