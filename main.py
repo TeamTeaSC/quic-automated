@@ -2,7 +2,8 @@ import subprocess
 
 from network.generate_cmds import generate_cmds
 from clients.run_clients import run_benchmark
-from analysis.analyze_ack import generate_plot
+from clients.helper import is_client_tcp
+from analysis.analyze_ack import *
 
 CONFIG_FILE = './param.json'
 
@@ -15,8 +16,13 @@ def main():
     clients: dict[str, list[str]] = run_benchmark(CONFIG_FILE)
 
     # Generate plots
+    print("clients:", clients)
     for client in clients:
-        for json_file in client:
-            generate_plot(json_file)
+        for json_file in clients[client]:
+            print(f'{client}: {json_file}')
+            if (is_client_tcp(client)):
+                generate_plot_tcp(json_file, client=client)
+            else:
+                generate_plot_quic(json_file, client=client)
 
 main()
