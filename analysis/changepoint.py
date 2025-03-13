@@ -2,6 +2,7 @@ import numpy as np
 import ruptures as rpt
 from typing import Optional
 from enum import Enum
+from utils.logging import *
 
 class Changepoint(Enum):
     """
@@ -47,7 +48,10 @@ def predict_changepoints_pelt(x_vals: np.ndarray, y_vals: np.ndarray) -> list:
     """
     signal = np.column_stack((x_vals, y_vals))
     model = "l2"  # use L2 norm (better for 2-dimensional data)
-    algo = rpt.Pelt(model=model, min_size=20, jump=5).fit(signal)
+    n = len(x_vals)
+    min_size = max(5, n // 10)
+    min_size = min(20, min_size)
+    algo = rpt.Pelt(model=model, min_size=min_size, jump=5).fit(signal)
     bkps = algo.predict(pen=10)
     return bkps
 
