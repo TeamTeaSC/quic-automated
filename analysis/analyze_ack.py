@@ -3,9 +3,10 @@ import os
 import json
 import numpy as np
 from matplotlib import pyplot as plt, patches as ptch
+from typing import Optional
 
 # --- Import internal files ---
-from analysis.changepoint import predict_changepoints
+from analysis.changepoint import Changepoint, predict_changepoints
 
 # --- Directories ---
 PLOTS_DIR = './plots'
@@ -243,7 +244,24 @@ def get_plot_title(client: str | None) -> str:
         title = title + f' for {client}'
     return title
 
-def generate_plot_tcp(pcap_file: str, client: str | None = None):
+def get_plot_filename(pcap_file: str, alg: Changepoint) -> str:
+    """ Given pcap file name and changepoint
+    
+    Args:
+        pcap_file (str): name of pcap file
+        alg (Changepoint): changepoint detection algorithm used
+        
+    Returns:
+        plot_file (str): name of plot file
+    """
+    plot_file = str.replace(pcap_file, 'json', 'pdf')
+    plot_file = str.replace(plot_file, 'pcap', PLOTS_DIR)
+    plot_file = plot_file[:-4] + f'-{alg.name}' + plot_file[-4:]
+    return plot_file
+
+
+def generate_plot_tcp(pcap_file: str, client: Optional[str] = None,
+                      algs: Optional[list[Changepoint]] = None):
     print(f'--- GENERATING TCP PLOT FOR {pcap_file} ---')
     make_dirs(DIRS)
 
@@ -259,54 +277,17 @@ def generate_plot_tcp(pcap_file: str, client: str | None = None):
 
     # Generate title for scatterplot
     title: str = get_plot_title(client)
-    # plt.title(title)
-
-    # Changepoint detection
-    brkps = predict_changepoints(rtts, cum_acks)
-    brkps = [0] + brkps[:-1] + [-1]  # ignore last breakpoint
-    
-    # Visualize changepoints by changing segment background color
-    colors = ['#1f77b4', '#ff7f0e']
-    num_colors = len(colors)
-    y_min, y_max = plt.ylim()
-    for i in range(len(brkps) - 1):
-        color = colors[i % num_colors]
-        start, end = brkps[i], brkps[i + 1]
-        x_start, x_end = rtts[start], rtts[end]
-        rect = ptch.Rectangle( (x_start, y_min), width=(x_end - x_start), 
-                                height=(y_max - y_min), facecolor=color,
-                                alpha=0.3,  # more transparent
-                                zorder=0)   # put rectangles behind points
-        plt.gca().add_patch(rect)
-
-    # Save plot as pdf file
-    plot_file = str.replace(pcap_file, 'json', 'pdf')
-    plot_file = str.replace(plot_file, 'pcap', PLOTS_DIR)
-    plt.savefig(plot_file, format='pdf', bbox_inches='tight')
-
-
-def generate_plot_quic(pcap_file: str, client: str | None = None):
-    print(f'--- GENERATING QUIC PLOT FOR {pcap_file} ---')
-    make_dirs(DIRS)
-
-    res = analyze_pcap_quic(pcap_file)
-    times, acks, cum_acks = res['times'], res['acks'], res['cum_acks']
-
-    plt.close('all')              # close all previously opened plots
-    plt.scatter(times, cum_acks)  # generate scatterplot
-    
-    plt.xlabel('time (ms)')
-    plt.ylabel('bytes acked')
-
-    # Generate title for scatterplot
-    title: str = get_plot_title(client)
     plt.title(title)
 
+    # Use PELT for changepoint detection if @algs not provided
+    if algs is None:
+        algs = [Changepoint.PELT]
+
     # Changepoint detection
-    if (len(times) > 0) and (len(cum_acks) > 0):
-        brkps = predict_changepoints(times, cum_acks)
+    for alg in algs:
+        brkps = predict_changepoints(rtts, cum_acks, alg)
         brkps = [0] + brkps[:-1] + [-1]  # ignore last breakpoint
-    
+        
         # Visualize changepoints by changing segment background color
         colors = ['#1f77b4', '#ff7f0e']
         num_colors = len(colors)
@@ -314,17 +295,64 @@ def generate_plot_quic(pcap_file: str, client: str | None = None):
         for i in range(len(brkps) - 1):
             color = colors[i % num_colors]
             start, end = brkps[i], brkps[i + 1]
-            x_start, x_end = times[start], times[end]
+            x_start, x_end = rtts[start], rtts[end]
             rect = ptch.Rectangle( (x_start, y_min), width=(x_end - x_start), 
                                     height=(y_max - y_min), facecolor=color,
                                     alpha=0.3,  # more transparent
                                     zorder=0)   # put rectangles behind points
             plt.gca().add_patch(rect)
 
-    # Save plot as pdf file
-    plot_file = str.replace(pcap_file, 'json', 'pdf')
-    plot_file = str.replace(plot_file, 'pcap', PLOTS_DIR)
-    plt.savefig(plot_file, format='pdf', bbox_inches='tight')
+        # Save plot as pdf file
+        plot_file = get_plot_filename(pcap_file, alg)
+        plt.savefig(plot_file, format='pdf', bbox_inches='tight')
+
+
+def generate_plot_quic(pcap_file: str, client: Optional[str] = None, 
+                       algs: Optional[list[Changepoint]] = None):
+    print(f'--- GENERATING QUIC PLOT FOR {pcap_file} ---')
+    make_dirs(DIRS)
+
+    res = analyze_pcap_quic(pcap_file)
+    times, acks, cum_acks = res['times'], res['acks'], res['cum_acks']
+
+    # Use PELT for changepoint detection if @algs not provided
+    if algs is None:
+        algs = [Changepoint.PELT]
+
+    # Plot using each changepoint algorithm
+    for alg in algs:
+        plt.close('all')              # close all previously opened plots
+        plt.scatter(times, cum_acks)  # generate scatterplot
+        
+        plt.xlabel('time (ms)')
+        plt.ylabel('bytes acked')
+
+        # Generate title for scatterplot
+        title: str = get_plot_title(client)
+        plt.title(title)
+
+        # Changepoint detection
+        if (len(times) > 0) and (len(cum_acks) > 0):
+            brkps = predict_changepoints(times, cum_acks, alg)
+            brkps = [0] + brkps[:-1] + [-1]  # ignore last breakpoint
+        
+            # Visualize changepoints by changing segment background color
+            colors = ['#1f77b4', '#ff7f0e']
+            num_colors = len(colors)
+            y_min, y_max = plt.ylim()
+            for i in range(len(brkps) - 1):
+                color = colors[i % num_colors]
+                start, end = brkps[i], brkps[i + 1]
+                x_start, x_end = times[start], times[end]
+                rect = ptch.Rectangle( (x_start, y_min), width=(x_end - x_start), 
+                                        height=(y_max - y_min), facecolor=color,
+                                        alpha=0.3,  # more transparent
+                                        zorder=0)   # put rectangles behind points
+                plt.gca().add_patch(rect)
+
+        # Save plot as pdf file
+        plot_file = get_plot_filename(pcap_file, alg)
+        plt.savefig(plot_file, format='pdf', bbox_inches='tight')
 
 
 # --- test quic ---
