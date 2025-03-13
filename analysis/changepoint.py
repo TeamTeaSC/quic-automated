@@ -65,7 +65,7 @@ def predict_changepoints_binseg(x_vals: np.ndarray, y_vals: np.ndarray) -> list:
     # Parameters for Binary Segmentation algorithm
     n = len(x_vals)
     dim = 2
-    sigma = 3  #! Change this later
+    sigma = 10  #! Change this later
 
     signal = np.column_stack((x_vals, y_vals))
     model = "l2"  # use L2 norm (better for 2-dimensional data)

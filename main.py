@@ -23,9 +23,9 @@ def main():
             print(f'{client}: {json_file}')
             if (is_client_tcp(client)):
                 generate_plot_tcp(json_file, client=client, 
-                                  algs=[Changepoint.PELT, Changepoint.BINSEG, Changepoint.WINDOW])
+                                  algs=[Changepoint.PELT, Changepoint.BINSEG, Changepoint.WINDOW, Changepoint.BOTTOMUP])
             else:
                 generate_plot_quic(json_file, client=client,
-                                   algs=[Changepoint.PELT, Changepoint.BINSEG, Changepoint.WINDOW])
+                                   algs=[Changepoint.PELT, Changepoint.BINSEG, Changepoint.WINDOW, Changepoint.BOTTOMUP])
 
 main()

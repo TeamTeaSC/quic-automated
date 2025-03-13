@@ -155,7 +155,10 @@ def analyze_pcap_quic(pcap_file: str):
     times   : list[float] = []  # timestamps (in ms) of ACK packets
     acks    : list[int]   = []  # bytes ACKed
     cum_acks: list[int]   = []  # cumulative bytes ACKed
-    bytes_outstanding: dict[int, int] = {}  # pkt_num -> bytes outstanding
+
+    # pkt_num -> (bytes outstanding, time)
+    bytes_outstanding: dict[int, tuple[int, float]] = {}  
+    rtt : Optional[float] = None
 
     for packet in d:
         layers = packet['_source']['layers']
@@ -183,7 +186,6 @@ def analyze_pcap_quic(pcap_file: str):
                 if quic_short is not None:
                     pkt_num = quic_short.get('quic.packet_number')
             if pkt_num is None:
-                # print('[ERROR] could not find packet number, skipping.')
                 continue
             pkt_num = int(pkt_num)
 
@@ -193,12 +195,12 @@ def analyze_pcap_quic(pcap_file: str):
                 print('[ERROR] could not find packet length, skipping...')
             pkt_len = int(pkt_len)
             
-            # update bytes outstanding for packet number
+            # update bytes outstanding and time for packet number
             if pkt_num not in bytes_outstanding:
-                bytes_outstanding[pkt_num] = 0
-            bytes_outstanding[pkt_num] += pkt_len
+                bytes_outstanding[pkt_num] = (0, 0.0)
 
-            # print(pkt_num, pkt_len)
+            new_pkt_len = bytes_outstanding[pkt_num][0] + pkt_len
+            bytes_outstanding[pkt_num] = (new_pkt_len, time)
 
             # convert frames to list (even if only 1 element)
             frames = quic['quic.frame']
@@ -207,17 +209,19 @@ def analyze_pcap_quic(pcap_file: str):
             
             # loop through each quic frame
             for frame in frames:
+                # process ACK frame
                 if (frame['quic.frame_type'] == ACK_TYPE) and (not is_receive):
                     ack = int(frame['quic.ack.largest_acknowledged'])
                     ack_range = int(frame['quic.ack.first_ack_range'])
-                    # print('ACK:', ack, ack_range)
 
                     # calculate bytes ACKed by this ACK frame
                     bytes_acked = 0
-                    for i in range(ack - ack_range, ack + 1):
-                        if i in bytes_outstanding:
-                            bytes_acked += bytes_outstanding[i]
-                            bytes_outstanding[i] = 0
+                    for pkt_num in range(ack, ack - ack_range - 1, -1):
+                        if pkt_num in bytes_outstanding:
+                            if rtt is None: # estimate RTT
+                                rtt = time - bytes_outstanding[pkt_num][1]
+                            bytes_acked += bytes_outstanding[pkt_num][0]
+                            bytes_outstanding[pkt_num] = (0, 0.0)
                     times.append(time)
                     acks.append(bytes_acked)
 
@@ -226,11 +230,17 @@ def analyze_pcap_quic(pcap_file: str):
                         cum_acks.append(bytes_acked)
                     else:
                         cum_acks.append(cum_acks[-1] + bytes_acked)
+
+    # normalize times by RTT
+    rtts: list[float] = []
+    for time in times:
+        rtts.append(time / rtt)
                     
     return {
-        'times': times,
-        'acks': acks,
-        'cum_acks': cum_acks
+        'times': np.array(times),
+        'rtts': np.array(rtts),
+        'acks': np.array(acks),
+        'cum_acks': np.array(cum_acks)
     }
 
 def get_plot_title(client: str | None) -> str:
@@ -313,7 +323,7 @@ def generate_plot_quic(pcap_file: str, client: Optional[str] = None,
     make_dirs(DIRS)
 
     res = analyze_pcap_quic(pcap_file)
-    times, acks, cum_acks = res['times'], res['acks'], res['cum_acks']
+    times, rtts, acks, cum_acks = res['times'], res['rtts'], res['acks'], res['cum_acks']
 
     # Use PELT for changepoint detection if @algs not provided
     if algs is None:
@@ -322,9 +332,9 @@ def generate_plot_quic(pcap_file: str, client: Optional[str] = None,
     # Plot using each changepoint algorithm
     for alg in algs:
         plt.close('all')              # close all previously opened plots
-        plt.scatter(times, cum_acks)  # generate scatterplot
+        plt.scatter(rtts, cum_acks)  # generate scatterplot
         
-        plt.xlabel('time (ms)')
+        plt.xlabel('RTT')
         plt.ylabel('bytes acked')
 
         # Generate title for scatterplot
@@ -332,8 +342,8 @@ def generate_plot_quic(pcap_file: str, client: Optional[str] = None,
         plt.title(title)
 
         # Changepoint detection
-        if (len(times) > 0) and (len(cum_acks) > 0):
-            brkps = predict_changepoints(times, cum_acks, alg)
+        if (len(rtts) > 0) and (len(cum_acks) > 0):
+            brkps = predict_changepoints(rtts, cum_acks, alg)
             brkps = [0] + brkps[:-1] + [-1]  # ignore last breakpoint
         
             # Visualize changepoints by changing segment background color
@@ -343,7 +353,7 @@ def generate_plot_quic(pcap_file: str, client: Optional[str] = None,
             for i in range(len(brkps) - 1):
                 color = colors[i % num_colors]
                 start, end = brkps[i], brkps[i + 1]
-                x_start, x_end = times[start], times[end]
+                x_start, x_end = rtts[start], rtts[end]
                 rect = ptch.Rectangle( (x_start, y_min), width=(x_end - x_start), 
                                         height=(y_max - y_min), facecolor=color,
                                         alpha=0.3,  # more transparent
