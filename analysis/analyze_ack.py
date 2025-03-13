@@ -2,7 +2,7 @@
 import os
 import json
 import numpy as np
-from matplotlib import pyplot as plt
+from matplotlib import pyplot as plt, patches as ptch
 
 # --- Import internal files ---
 from analysis.changepoint import predict_changepoints
@@ -21,7 +21,7 @@ def make_dirs(DIRS: list[str]):
             os.makedirs(DIR) 
 
 # Analyze TCP PCAP file and returns data points: ([RTT], [bytes acked])
-def analyze_pcap_tcp(pcap_file: str):
+def analyze_pcap_tcp_per_RTT(pcap_file: str):
     try:
         with open(pcap_file) as f:
             d = json.load(f)
@@ -76,6 +76,63 @@ def analyze_pcap_tcp(pcap_file: str):
                 cum_ack_curr = cum_ack_prev
             cum_ack_prev = ack
             cum_acks.append(ack - cum_ack_curr)
+            
+    return {
+        'times': np.array(times),
+        'rtts': np.array(rtts),
+        'seqs': np.array(seqs),
+        'acks': np.array(acks),
+        'cum_acks': np.array(cum_acks)
+    }
+
+# Analyze TCP PCAP file and returns data points: ([RTT], [bytes acked])
+def analyze_pcap_tcp_cum(pcap_file: str):
+    try:
+        with open(pcap_file) as f:
+            d = json.load(f)
+    except OSError:
+        print(f'[ERROR] could not open file:', pcap_file)
+        return
+    
+    times = []
+    seqs = []
+    acks = []
+    rtts = []
+    is_fin = False
+
+    initial_rtt = None   # RTT measured from initial handshake
+    cum_acks = []        # cumulative ack within each RTT window
+
+    for packet in d:
+        if is_fin:
+            break 
+
+        tcp = packet['_source']['layers']['tcp']
+
+        if ((initial_rtt is None) and 
+            tcp.get('tcp.analysis') is not None and
+            tcp.get('tcp.analysis').get('tcp.analysis.initial_rtt') is not None):
+            initial_rtt = float(tcp['tcp.analysis']['tcp.analysis.initial_rtt']) * 1000 # (in ms)
+
+        if initial_rtt is None:
+            continue
+
+        time = float(tcp['Timestamps']['tcp.time_relative']) * 1000  # relative time (in ms)
+
+        is_receive = (tcp['tcp.srcport'] == '443') # packet coming from server port 443
+        is_fin = (tcp['tcp.flags_tree']['tcp.flags.fin'] == '1')
+    
+        seq = int(tcp['tcp.seq'])
+        ack = int(tcp['tcp.ack'])
+
+        if not (is_receive or is_fin):
+            times.append(time)
+            seqs.append(seq)
+            acks.append(ack)
+
+            rtt = time / initial_rtt
+            rtts.append(rtt)
+            cum_acks.append(ack)
             
     return {
         'times': np.array(times),
@@ -190,27 +247,39 @@ def generate_plot_tcp(pcap_file: str, client: str | None = None):
     print(f'--- GENERATING TCP PLOT FOR {pcap_file} ---')
     make_dirs(DIRS)
 
-    res = analyze_pcap_tcp(pcap_file)
+    res = analyze_pcap_tcp_cum(pcap_file)
     rtts, acks, cum_acks = res['rtts'], res['acks'], res['cum_acks']
 
-    plt.close('all')  # close all previously opened plots
+    plt.close('all')             # close all previously opened plots
+    plt.scatter(rtts, cum_acks)  # generate scatterplot
 
-    # Generate scatterplot
-    plt.scatter(rtts, cum_acks)
+    # Generate axis labels
     plt.xlabel('RTT')
     plt.ylabel('bytes acked')
 
     # Generate title for scatterplot
     title: str = get_plot_title(client)
-    plt.title(title)
+    # plt.title(title)
 
     # Changepoint detection
     brkps = predict_changepoints(rtts, cum_acks)
-    print("BREAKPOINTS:", brkps)
+    brkps = [0] + brkps[:-1] + [-1]  # ignore last breakpoint
+    
+    # Visualize changepoints by changing segment background color
+    colors = ['#1f77b4', '#ff7f0e']
+    num_colors = len(colors)
+    y_min, y_max = plt.ylim()
+    for i in range(len(brkps) - 1):
+        color = colors[i % num_colors]
+        start, end = brkps[i], brkps[i + 1]
+        x_start, x_end = rtts[start], rtts[end]
+        rect = ptch.Rectangle( (x_start, y_min), width=(x_end - x_start), 
+                                height=(y_max - y_min), facecolor=color,
+                                alpha=0.3,  # more transparent
+                                zorder=0)   # put rectangles behind points
+        plt.gca().add_patch(rect)
 
-    for brkp in brkps[:-1]:  # ignore last breakpoint since it is signal length
-        plt.axvline(x=rtts[brkp], color='r', linestyle='--', alpha=0.7)
-
+    # Save plot as pdf file
     plot_file = str.replace(pcap_file, 'json', 'pdf')
     plot_file = str.replace(plot_file, 'pcap', PLOTS_DIR)
     plt.savefig(plot_file, format='pdf', bbox_inches='tight')
@@ -223,10 +292,9 @@ def generate_plot_quic(pcap_file: str, client: str | None = None):
     res = analyze_pcap_quic(pcap_file)
     times, acks, cum_acks = res['times'], res['acks'], res['cum_acks']
 
-    plt.close('all')  # close all previously opened plots
-
-    # Generate scatterplot
-    plt.scatter(times, cum_acks)
+    plt.close('all')              # close all previously opened plots
+    plt.scatter(times, cum_acks)  # generate scatterplot
+    
     plt.xlabel('time (ms)')
     plt.ylabel('bytes acked')
 
@@ -234,6 +302,26 @@ def generate_plot_quic(pcap_file: str, client: str | None = None):
     title: str = get_plot_title(client)
     plt.title(title)
 
+    # Changepoint detection
+    if (len(times) > 0) and (len(cum_acks) > 0):
+        brkps = predict_changepoints(times, cum_acks)
+        brkps = [0] + brkps[:-1] + [-1]  # ignore last breakpoint
+    
+        # Visualize changepoints by changing segment background color
+        colors = ['#1f77b4', '#ff7f0e']
+        num_colors = len(colors)
+        y_min, y_max = plt.ylim()
+        for i in range(len(brkps) - 1):
+            color = colors[i % num_colors]
+            start, end = brkps[i], brkps[i + 1]
+            x_start, x_end = times[start], times[end]
+            rect = ptch.Rectangle( (x_start, y_min), width=(x_end - x_start), 
+                                    height=(y_max - y_min), facecolor=color,
+                                    alpha=0.3,  # more transparent
+                                    zorder=0)   # put rectangles behind points
+            plt.gca().add_patch(rect)
+
+    # Save plot as pdf file
     plot_file = str.replace(pcap_file, 'json', 'pdf')
     plot_file = str.replace(plot_file, 'pcap', PLOTS_DIR)
     plt.savefig(plot_file, format='pdf', bbox_inches='tight')
