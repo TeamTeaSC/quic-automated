@@ -35,7 +35,9 @@ def predict_changepoints(x_vals: np.ndarray, y_vals: np.ndarray, alg: Changepoin
             print(f'[changepoint.py]: invalid @alg')
             return []
 
-def predict_changepoints_pelt(x_vals: np.ndarray, y_vals: np.ndarray) -> list:
+def predict_changepoints_pelt(x_vals: np.ndarray, y_vals: np.ndarray,
+                              min_size: Optional[int] = None, 
+                              jump: Optional[int] = None) -> list:
     """ Predict changepoints in 2-dimensional data using PELT
         (Pruned Exact Linear Time) algorithm (offline method).
     
@@ -49,13 +51,20 @@ def predict_changepoints_pelt(x_vals: np.ndarray, y_vals: np.ndarray) -> list:
     signal = np.column_stack((x_vals, y_vals))
     model = "l2"  # use L2 norm (better for 2-dimensional data)
     n = len(x_vals)
-    min_size = max(5, n // 10)
-    min_size = min(20, min_size)
-    algo = rpt.Pelt(model=model, min_size=min_size, jump=5).fit(signal)
+
+    if min_size is None:
+        min_size = max(5, n // 10)
+        min_size = min(20, min_size)
+    
+    if jump is None:
+        jump = 5
+
+    algo = rpt.Pelt(model=model, min_size=min_size, jump=jump).fit(signal)
     bkps = algo.predict(pen=10)
     return bkps
 
-def predict_changepoints_binseg(x_vals: np.ndarray, y_vals: np.ndarray) -> list:
+def predict_changepoints_binseg(x_vals: np.ndarray, y_vals: np.ndarray,
+                                sigma: Optional[float] = None) -> list:
     """ Predict changepoints in 2-dimensional data using Binary
         Segmentation algorithm (offline method).
     
@@ -69,7 +78,10 @@ def predict_changepoints_binseg(x_vals: np.ndarray, y_vals: np.ndarray) -> list:
     # Parameters for Binary Segmentation algorithm
     n = len(x_vals)
     dim = 2
-    sigma = 10  #! Change this later
+    
+    # Provide default value for @sigma if None
+    if sigma is None:
+        sigma = 10.0 
 
     signal = np.column_stack((x_vals, y_vals))
     model = "l2"  # use L2 norm (better for 2-dimensional data)
@@ -77,7 +89,8 @@ def predict_changepoints_binseg(x_vals: np.ndarray, y_vals: np.ndarray) -> list:
     bkps = algo.predict(pen=np.log(n) * dim * sigma**2)
     return bkps
 
-def predict_changepoints_bottomup(x_vals: np.ndarray, y_vals: np.ndarray) -> list:
+def predict_changepoints_bottomup(x_vals: np.ndarray, y_vals: np.ndarray,
+                                  sigma: Optional[float] = None) -> list:
     """ Predict changepoints in 2-dimensional data using Bottom-up
         segmentation algorithm (offline method).
     
@@ -91,7 +104,10 @@ def predict_changepoints_bottomup(x_vals: np.ndarray, y_vals: np.ndarray) -> lis
     # Parameters for Bottom-up Segmentation algorithm
     n = len(x_vals)
     dim = 2
-    sigma = 3  #! Change this later
+
+    # Provide default value for @sigma if None
+    if sigma is None:
+        sigma = 10.0
 
     signal = np.column_stack((x_vals, y_vals))
     model = "l2"  # use L2 norm (better for 2-dimensional data)
@@ -99,7 +115,9 @@ def predict_changepoints_bottomup(x_vals: np.ndarray, y_vals: np.ndarray) -> lis
     bkps = algo.predict(pen=np.log(n) * dim * sigma**2)
     return bkps
 
-def predict_changepoints_window(x_vals: np.ndarray, y_vals: np.ndarray) -> list:
+def predict_changepoints_window(x_vals: np.ndarray, y_vals: np.ndarray,
+                                sigma: Optional[float] = None,
+                                width: Optional[int] = None) -> list:
     """ Predict changepoints in 2-dimensional data using Window-sliding
         segmentation algorithm (offline method).
     
@@ -113,9 +131,15 @@ def predict_changepoints_window(x_vals: np.ndarray, y_vals: np.ndarray) -> list:
     # Parameters for Window-sliding Segmentation algorithm
     n = len(x_vals)
     dim = 2
-    sigma = 3  #! Change this later
-    width = 3  #! Change this later
 
+    # Provide default value for @sigma if None
+    if sigma is None:
+        sigma = 3.0
+
+    # Provide default value for @width if None
+    if width is None:
+        width = 3 
+        
     signal = np.column_stack((x_vals, y_vals))
     model = "l2"  # use L2 norm (better for 2-dimensional data)
     algo = rpt.Window(width=width, model=model).fit(signal)

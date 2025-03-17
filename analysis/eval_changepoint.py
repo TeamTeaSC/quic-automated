@@ -1,5 +1,6 @@
 import numpy as np
 from bisect import bisect_left
+from changepoint import *
 
 def get_nearest_bkp(bkp: int, bkps_correct: list[int], x_vals: np.ndarray) -> tuple[int, int]:
     """ Given @bkp, returns the @elem in @bkps_correct such that 
@@ -50,3 +51,94 @@ def changepoint_loss(bkps_pred: list[int], bkps_correct: list[int],
         err = abs(x_vals[val] - x_vals[bkp])
         total_err += err
     return total_err
+
+def best_params_pelt(x_vals: np.ndarray, y_vals: np.ndarray, 
+                     bkps_correct: list[int]) -> tuple[int, int]:
+    N = len(x_vals)
+
+    # Keep track of best error and parameters encountered so far
+    best_err = None
+    best_min_size = None
+    best_jump = None
+
+    for min_size in range(1, N//4):  # try different values for min_size
+        for jump in range(1, 20):    # try different values for jump
+            bkps_pred = predict_changepoints_pelt(x_vals, y_vals, 
+                            min_size=min_size, jump=jump)
+            err = changepoint_loss(bkps_pred, bkps_correct, x_vals)
+
+            # Save best error and parameters
+            if (best_err is None) or (err <= best_err):
+                best_err = err
+                best_min_size = min_size
+                best_jump = jump
+
+    # Return best parameters
+    return (best_min_size, best_jump)
+
+def best_params_binseg(x_vals: np.ndarray, y_vals: np.ndarray, 
+                       bkps_correct: list[int]) -> float:
+    N = len(x_vals)
+
+    # Keep track of best error and parameters encountered so far
+    best_err = None
+    best_sigma = None
+
+    delta = 0.1
+    for sigma in range(delta, 100 * delta, delta):
+        bkps_pred = predict_changepoints_binseg(x_vals, y_vals, sigma=sigma)
+        err = changepoint_loss(bkps_pred, bkps_correct, x_vals)
+
+        # Save best error and parameters
+        if (best_err is None) or (err <= best_err):
+            best_err = err
+            best_sigma = sigma
+    
+    # Return best parameters
+    return best_sigma
+
+def best_params_bottomup(x_vals: np.ndarray, y_vals: np.ndarray, 
+                         bkps_correct: list[int]) -> float:
+    N = len(x_vals)
+
+    # Keep track of best error and parameters encountered so far
+    best_err = None
+    best_sigma = None
+
+    delta = 0.1
+    for sigma in range(delta, 100 * delta, delta):
+        bkps_pred = predict_changepoints_bottomup(x_vals, y_vals, sigma=sigma)
+        err = changepoint_loss(bkps_pred, bkps_correct, x_vals)
+
+        # Save best error and parameters
+        if (best_err is None) or (err <= best_err):
+            best_err = err
+            best_sigma = sigma
+    
+    # Return best parameters
+    return best_sigma
+
+def best_params_window(x_vals: np.ndarray, y_vals: np.ndarray, 
+                         bkps_correct: list[int]) -> tuple[float, int]:
+    N = len(x_vals)
+
+    # Keep track of best error and parameters encountered so far
+    best_err = None
+    best_sigma = None
+    best_window = None
+
+    delta = 0.1
+    for sigma in range(delta, 100 * delta, delta):
+        for window in range(1, N//4):
+            bkps_pred = predict_changepoints_window(x_vals, y_vals, sigma=sigma,
+                                                    window=window)
+            err = changepoint_loss(bkps_pred, bkps_correct, x_vals)
+
+            # Save best error and parameters
+            if (best_err is None) or (err <= best_err):
+                best_err = err
+                best_sigma = sigma
+                best_window = window
+    
+    # Return best parameters
+    return (best_sigma, best_window)
