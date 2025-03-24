@@ -8,7 +8,7 @@ from matplotlib import pyplot as plt, patches as ptch
 from typing import Optional
 
 # --- Import internal files ---
-from analysis.changepoint import Changepoint, predict_changepoints
+from analysis.changepoint import *
 
 # --- Directories ---
 PLOTS_DIR = './plots'
@@ -407,6 +407,43 @@ def generate_plot_quic(pcap_file: str, client: Optional[str] = None,
         # Save plot as pdf file
         plot_file = get_plot_filename(pcap_file, alg)
         plt.savefig(plot_file, format='pdf', bbox_inches='tight')
+
+def generate_plot_quic_csv(csv_file: str,
+                           correct_brkps: Optional[list[int]] = None,
+                           alg: Optional[Changepoint] = None,
+                           min_size: Optional[int] = None,
+                           jump: Optional[int] = None,
+                           sigma: Optional[float] = None,
+                           width: Optional[int] = None):
+    print(f'--- GENERATING QUIC PLOT FOR {csv_file} ---')
+    make_dirs(DIRS)
+
+    res = read_csv_quic(csv_file)
+    rtts, cum_acks = res['rtts'], res['cum_acks']
+
+    plt.close('all')             # close all previously opened plots
+    plt.scatter(rtts, cum_acks)  # generate scatterplot
+    
+    plt.xlabel('RTT')
+    plt.ylabel('bytes acked')
+
+    # Plot correct changepoints
+    brkps = correct_brkps
+    for brkp in brkps:
+        plt.axvline(x=rtts[brkp], color='k', linestyle='--')
+
+    # Plot predicted changepoints
+    if alg is None:
+        alg = Changepoint.PELT
+    brkps = predict_changepoints(rtts, cum_acks, alg, min_size=min_size, jump=jump,
+                                 sigma=sigma, width=width)
+    brkps = brkps[:-1]  # ignore last breakpoint
+    for brkp in brkps:
+        plt.axvline(x=rtts[brkp], color='g', linestyle='--')
+
+    # Save plot as pdf file
+    plot_file = get_plot_filename(csv_file, alg=alg)
+    plt.savefig(plot_file, format='pdf', bbox_inches='tight')
 
 
 # --- test quic ---

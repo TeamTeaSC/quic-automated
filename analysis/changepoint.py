@@ -14,7 +14,11 @@ class Changepoint(Enum):
     WINDOW = 3
     CUSUM = 4
 
-def predict_changepoints(x_vals: np.ndarray, y_vals: np.ndarray, alg: Changepoint) -> list:
+def predict_changepoints(x_vals: np.ndarray, y_vals: np.ndarray, alg: Changepoint,
+                         min_size: Optional[int] = None,
+                         jump: Optional[int] = None,
+                         sigma: Optional[float] = None,
+                         width: Optional[int] = None) -> list:
     """ Runs the specified changepoint detection algorithm specified by @alg,
         on @x_vals and @y_vals.
     
@@ -27,10 +31,14 @@ def predict_changepoints(x_vals: np.ndarray, y_vals: np.ndarray, alg: Changepoin
         bkps (list): breakpoints (index into x_vals)
     """
     match alg:
-        case Changepoint.PELT: return predict_changepoints_pelt(x_vals, y_vals)
-        case Changepoint.BINSEG: return predict_changepoints_binseg(x_vals, y_vals)
-        case Changepoint.BOTTOMUP: return predict_changepoints_bottomup(x_vals, y_vals)
-        case Changepoint.WINDOW: return predict_changepoints_window(x_vals, y_vals)
+        case Changepoint.PELT: 
+            return predict_changepoints_pelt(x_vals, y_vals, min_size=min_size, jump=jump)
+        case Changepoint.BINSEG: 
+            return predict_changepoints_binseg(x_vals, y_vals, sigma=sigma)
+        case Changepoint.BOTTOMUP: 
+            return predict_changepoints_bottomup(x_vals, y_vals, sigma=sigma)
+        case Changepoint.WINDOW: 
+            return predict_changepoints_window(x_vals, y_vals, sigma=sigma, width=width)
         case _:  # invalid alg 
             print(f'[changepoint.py]: invalid @alg')
             return []

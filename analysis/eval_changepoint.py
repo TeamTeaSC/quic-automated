@@ -1,8 +1,8 @@
 import numpy as np
 from bisect import bisect_left
-from changepoint import *
+from analysis.changepoint import *
 
-def get_nearest_bkp(bkp: int, bkps_correct: list[int], x_vals: np.ndarray) -> tuple[int, int]:
+def get_nearest_bkp(bkp: int, bkps_correct: list[int], x_vals: np.ndarray) -> int:
     """ Given @bkp, returns the @elem in @bkps_correct such that 
         @x_vals[@bkp] - @elem is minimized.
 
@@ -23,6 +23,7 @@ def get_nearest_bkp(bkp: int, bkps_correct: list[int], x_vals: np.ndarray) -> tu
     else:             # check if bkp is closer to left or right
         left = bkps_correct[idx-1]
         right = bkps_correct[idx]
+
         if np.abs(x_vals[left] - x_vals[bkp]) <= np.abs(x_vals[right] - x_vals[bkp]):
             return left
         else:
@@ -43,29 +44,40 @@ def changepoint_loss(bkps_pred: list[int], bkps_correct: list[int],
                            @x_vals) between each breakpoint in @bkps_pred 
                            to the nearest breakpoint in @bkps_correct
     """
+    # Compute total distance error on the space @x_vals
     total_err = 0.0
-    N = len(bkps_pred)
+    N = len(bkps_correct)
     for i in range(N):
-        bkp = bkps_pred[i]
-        (_, val) = get_nearest_bkp(bkp, bkps_correct)
+        bkp = bkps_correct[i]
+        val = get_nearest_bkp(bkp, bkps_pred, x_vals)
         err = abs(x_vals[val] - x_vals[bkp])
         total_err += err
-    return total_err
+
+    # Penalize predicting too many breakpoints
+    n_pred = len(bkps_pred)
+    n_correct = len(bkps_correct)
+    penalty_factor = 0.035
+    penalty = penalty_factor * np.abs(n_pred - n_correct)
+
+    return total_err + penalty
 
 def best_params_pelt(x_vals: np.ndarray, y_vals: np.ndarray, 
-                     bkps_correct: list[int]) -> tuple[int, int]:
+                     bkps_correct: list[int]) -> tuple[float, int, int]:
     N = len(x_vals)
 
     # Keep track of best error and parameters encountered so far
     best_err = None
     best_min_size = None
     best_jump = None
-
+    
     for min_size in range(1, N//4):  # try different values for min_size
         for jump in range(1, 20):    # try different values for jump
+            print(f'trying min_size = {min_size}, jump = {jump}')
             bkps_pred = predict_changepoints_pelt(x_vals, y_vals, 
                             min_size=min_size, jump=jump)
+            bkps_pred = bkps_pred[:-1]  # discard last item
             err = changepoint_loss(bkps_pred, bkps_correct, x_vals)
+            print(f'err is = {err}')
 
             # Save best error and parameters
             if (best_err is None) or (err <= best_err):
@@ -74,10 +86,10 @@ def best_params_pelt(x_vals: np.ndarray, y_vals: np.ndarray,
                 best_jump = jump
 
     # Return best parameters
-    return (best_min_size, best_jump)
+    return (best_err, best_min_size, best_jump)
 
 def best_params_binseg(x_vals: np.ndarray, y_vals: np.ndarray, 
-                       bkps_correct: list[int]) -> float:
+                       bkps_correct: list[int]) -> tuple[float, float]:
     N = len(x_vals)
 
     # Keep track of best error and parameters encountered so far
@@ -85,7 +97,9 @@ def best_params_binseg(x_vals: np.ndarray, y_vals: np.ndarray,
     best_sigma = None
 
     delta = 0.1
-    for sigma in range(delta, 100 * delta, delta):
+    num_iters = 100
+    for i in range(1, num_iters + 1):
+        sigma = i * delta
         bkps_pred = predict_changepoints_binseg(x_vals, y_vals, sigma=sigma)
         err = changepoint_loss(bkps_pred, bkps_correct, x_vals)
 
@@ -95,10 +109,10 @@ def best_params_binseg(x_vals: np.ndarray, y_vals: np.ndarray,
             best_sigma = sigma
     
     # Return best parameters
-    return best_sigma
+    return (best_err, best_sigma)
 
 def best_params_bottomup(x_vals: np.ndarray, y_vals: np.ndarray, 
-                         bkps_correct: list[int]) -> float:
+                         bkps_correct: list[int]) -> tuple[float, float]:
     N = len(x_vals)
 
     # Keep track of best error and parameters encountered so far
@@ -106,7 +120,9 @@ def best_params_bottomup(x_vals: np.ndarray, y_vals: np.ndarray,
     best_sigma = None
 
     delta = 0.1
-    for sigma in range(delta, 100 * delta, delta):
+    num_iters = 100
+    for i in range(1, num_iters + 1):
+        sigma = i * delta
         bkps_pred = predict_changepoints_bottomup(x_vals, y_vals, sigma=sigma)
         err = changepoint_loss(bkps_pred, bkps_correct, x_vals)
 
@@ -116,29 +132,32 @@ def best_params_bottomup(x_vals: np.ndarray, y_vals: np.ndarray,
             best_sigma = sigma
     
     # Return best parameters
-    return best_sigma
+    return (best_err, best_sigma)
 
 def best_params_window(x_vals: np.ndarray, y_vals: np.ndarray, 
-                         bkps_correct: list[int]) -> tuple[float, int]:
+                         bkps_correct: list[int]) -> tuple[float, float, int]:
     N = len(x_vals)
 
     # Keep track of best error and parameters encountered so far
     best_err = None
     best_sigma = None
-    best_window = None
+    best_width = None
 
     delta = 0.1
-    for sigma in range(delta, 100 * delta, delta):
-        for window in range(1, N//4):
+    num_iters = 100
+    for i in range(1, num_iters + 1):
+        sigma = i * delta
+        for width in range(1, N//4):
+            print(f'Trying sigma: {sigma}, width: {width}')
             bkps_pred = predict_changepoints_window(x_vals, y_vals, sigma=sigma,
-                                                    window=window)
+                                                    width=width)
             err = changepoint_loss(bkps_pred, bkps_correct, x_vals)
 
             # Save best error and parameters
             if (best_err is None) or (err <= best_err):
                 best_err = err
                 best_sigma = sigma
-                best_window = window
+                best_width = width
     
     # Return best parameters
-    return (best_sigma, best_window)
+    return (best_err, best_sigma, best_width)

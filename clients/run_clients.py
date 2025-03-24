@@ -186,4 +186,4 @@ def run_benchmark(config_file: str) -> dict[str, list[str]]:
     return outputs
 
 # test
-run_benchmark('./param.json')
+# run_benchmark('./param.json')
