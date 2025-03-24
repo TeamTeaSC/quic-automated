@@ -24,6 +24,7 @@ def main():
             if (is_client_tcp(client)):
                 generate_plot_tcp(json_file, client=client)
             else:
-                generate_plot_quic(json_file, client=client)
+                # generate_plot_quic(json_file, client=client)
+                generate_csv_quic(json_file, client=client)
 
 main()

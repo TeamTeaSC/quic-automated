@@ -1,6 +1,8 @@
 # --- Import external libraries ---
 import os
+import csv
 import json
+import time
 import numpy as np
 from matplotlib import pyplot as plt, patches as ptch
 from typing import Optional
@@ -10,10 +12,12 @@ from analysis.changepoint import Changepoint, predict_changepoints
 
 # --- Directories ---
 PLOTS_DIR = './plots'
-DIRS = [PLOTS_DIR]
+CSV_DIR = './csv'
+DIRS = [PLOTS_DIR, CSV_DIR]
 
 # --- Constants ---
 ACK_TYPE = '0x0000000000000002'
+CSV_DELIM = ','
 
 # Make all directories in DIRS (if they don't exist)
 def make_dirs(DIRS: list[str]):
@@ -316,6 +320,46 @@ def generate_plot_tcp(pcap_file: str, client: Optional[str] = None,
         plot_file = get_plot_filename(pcap_file, alg)
         plt.savefig(plot_file, format='pdf', bbox_inches='tight')
 
+def get_csv_filename(pcap_file: str) -> str:
+    csv_file = str.replace(pcap_file, 'json', 'csv')
+    csv_file = str.replace(pcap_file, 'pcap', CSV_DIR)
+    return csv_file
+
+def read_csv_quic(csv_file: str) -> np.ndarray:
+    raw: np.ndarray = np.genfromtxt(csv_file, delimiter=CSV_DELIM)
+
+    if (len(raw) == 0):
+        return None
+    
+    times = raw[0]
+    rtts = raw[1]
+    acks = raw[2]
+    cum_acks = raw[3]
+    return {
+        'times': times,
+        'rtts': rtts,
+        'acks': acks,
+        'cum_acks': cum_acks
+    }
+
+def generate_csv_quic(pcap_file: str, client: Optional[str] = None) -> str:
+    print(f'--- GENERATING QUIC CSV FOR {pcap_file} ---')
+    make_dirs(DIRS)
+
+    res = analyze_pcap_quic(pcap_file)
+    times, rtts, acks, cum_acks = res['times'], res['rtts'], res['acks'], res['cum_acks']
+    out = np.asarray([times, rtts, acks, cum_acks])
+    csv_file = get_csv_filename(pcap_file)
+    np.savetxt(csv_file, out, delimiter=CSV_DELIM)
+
+    raw = read_csv_quic(csv_file)
+    if raw is not None:
+        print(raw['times'])
+        print(raw['rtts'])
+        print(raw['acks'])
+        print(raw['cum_acks'])
+
+    return csv_file
 
 def generate_plot_quic(pcap_file: str, client: Optional[str] = None, 
                        algs: Optional[list[Changepoint]] = None):
@@ -331,7 +375,7 @@ def generate_plot_quic(pcap_file: str, client: Optional[str] = None,
 
     # Plot using each changepoint algorithm
     for alg in algs:
-        plt.close('all')              # close all previously opened plots
+        plt.close('all')             # close all previously opened plots
         plt.scatter(rtts, cum_acks)  # generate scatterplot
         
         plt.xlabel('RTT')
@@ -341,7 +385,7 @@ def generate_plot_quic(pcap_file: str, client: Optional[str] = None,
         title: str = get_plot_title(client)
         plt.title(title)
 
-        # Changepoint detection
+        # Run changepoint detection algorithm
         if (len(rtts) > 0) and (len(cum_acks) > 0):
             brkps = predict_changepoints(rtts, cum_acks, alg)
             brkps = [0] + brkps[:-1] + [-1]  # ignore last breakpoint
