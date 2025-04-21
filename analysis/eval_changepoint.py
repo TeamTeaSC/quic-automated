@@ -24,6 +24,9 @@ def get_nearest_bkp(bkp: int, bkps_correct: list[int], x_vals: np.ndarray) -> in
         left = bkps_correct[idx-1]
         right = bkps_correct[idx]
 
+        if right >= len(x_vals):
+            return left
+
         if np.abs(x_vals[left] - x_vals[bkp]) <= np.abs(x_vals[right] - x_vals[bkp]):
             return left
         else:
@@ -56,7 +59,7 @@ def changepoint_loss(bkps_pred: list[int], bkps_correct: list[int],
     # Penalize predicting too many breakpoints
     n_pred = len(bkps_pred)
     n_correct = len(bkps_correct)
-    penalty_factor = 0.035
+    penalty_factor = 1.0
     penalty = penalty_factor * np.abs(n_pred - n_correct)
 
     return total_err + penalty
@@ -96,7 +99,7 @@ def best_params_binseg(x_vals: np.ndarray, y_vals: np.ndarray,
     best_err = None
     best_sigma = None
 
-    delta = 0.1
+    delta = 10000
     num_iters = 100
     for i in range(1, num_iters + 1):
         sigma = i * delta
@@ -119,7 +122,7 @@ def best_params_bottomup(x_vals: np.ndarray, y_vals: np.ndarray,
     best_err = None
     best_sigma = None
 
-    delta = 0.1
+    delta = 10000
     num_iters = 100
     for i in range(1, num_iters + 1):
         sigma = i * delta
@@ -149,8 +152,11 @@ def best_params_window(x_vals: np.ndarray, y_vals: np.ndarray,
         sigma = i * delta
         for width in range(1, N//4):
             print(f'Trying sigma: {sigma}, width: {width}')
-            bkps_pred = predict_changepoints_window(x_vals, y_vals, sigma=sigma,
-                                                    width=width)
+            try:
+                bkps_pred = predict_changepoints_window(x_vals, y_vals, sigma=sigma,
+                                                        width=width)
+            except:
+                continue
             err = changepoint_loss(bkps_pred, bkps_correct, x_vals)
 
             # Save best error and parameters

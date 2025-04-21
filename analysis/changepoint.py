@@ -39,9 +39,37 @@ def predict_changepoints(x_vals: np.ndarray, y_vals: np.ndarray, alg: Changepoin
             return predict_changepoints_bottomup(x_vals, y_vals, sigma=sigma)
         case Changepoint.WINDOW: 
             return predict_changepoints_window(x_vals, y_vals, sigma=sigma, width=width)
+        case Changepoint.CUSUM:
+            return predict_changepoints_cusum(x_vals, y_vals)
         case _:  # invalid alg 
             print(f'[changepoint.py]: invalid @alg')
             return []
+        
+def post_process_changepoints(x_vals: np.ndarray, y_vals: np.ndarray, 
+                              bkps: list) -> list:
+    n = len(bkps)
+    slopes = []
+    for i in range(n):
+        bkp = bkps[i]
+        slope = (y_vals[bkp] - y_vals[bkp - 1]) / (x_vals[bkp] - x_vals[bkp - 1])
+        slopes.append(slope)
+
+    remove = set()
+    threshold = 100000
+    for i in range(len(slopes) - 1):
+        if (abs(slopes[i] - slopes[i + 1]) < threshold):
+            remove.add(i)
+
+    post_process_bkps = []
+    for i in range(n):
+        if i not in remove: 
+            post_process_bkps.append(bkps[i])
+    
+    print(slopes)
+    print(remove)
+
+    return post_process_bkps
+
 
 def predict_changepoints_pelt(x_vals: np.ndarray, y_vals: np.ndarray,
                               min_size: Optional[int] = None, 
@@ -152,4 +180,34 @@ def predict_changepoints_window(x_vals: np.ndarray, y_vals: np.ndarray,
     model = "l2"  # use L2 norm (better for 2-dimensional data)
     algo = rpt.Window(width=width, model=model).fit(signal)
     bkps = algo.predict(pen=np.log(n) * dim * sigma**2)
+    return bkps
+
+def predict_changepoints_cusum(x_vals: np.ndarray, y_vals: np.ndarray, 
+                               threshold: float = 28.0, drift: float = 0.0):
+    # Initialize parameters for CUSUM
+    y_len  = len(y_vals)
+    y_mean = np.mean(y_vals)
+    y_std  = np.std(y_vals)
+    
+    # Initialize cumulative sums in positive and negative directions
+    s_pos = np.zeros(y_len)
+    s_neg = np.zeros(y_len)
+
+    # Initialize array of changepoints
+    bkps = []
+
+    for i in range(1, y_len):
+        s_pos[i] = max(0, s_pos[i-1] + (y_vals[i] - y_mean) / y_std - drift)
+        s_neg[i] = max(0, s_neg[i-1] - (y_vals[i] - y_mean) / y_std - drift)
+        
+        # Check if cumulative sums have exceeded threshold
+        if (s_pos[i] > threshold) or (s_neg[i] > threshold):
+            # Predict changepoint
+            bkps.append(i)
+
+            # Reset cumulative sums
+            s_pos[i] = 0
+            s_neg[i] = 0 
+    
+    bkps = post_process_changepoints(x_vals, y_vals, bkps)
     return bkps

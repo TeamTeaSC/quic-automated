@@ -270,7 +270,8 @@ def get_plot_filename(pcap_file: str, alg: Changepoint) -> str:
     """
     plot_file = str.replace(pcap_file, 'json', 'pdf')
     plot_file = str.replace(plot_file, 'pcap', PLOTS_DIR)
-    plot_file = plot_file[:-4] + f'-{alg.name}' + plot_file[-4:]
+    if alg is not None:
+        plot_file = plot_file[:-4] + f'-{alg.name}' + plot_file[-4:]
     return plot_file
 
 
@@ -427,19 +428,18 @@ def generate_plot_quic_csv(csv_file: str,
     plt.xlabel('RTT')
     plt.ylabel('bytes acked')
 
-    # Plot correct changepoints
-    brkps = correct_brkps
-    for brkp in brkps:
-        plt.axvline(x=rtts[brkp], color='k', linestyle='--')
+    # # Plot correct changepoints
+    # brkps = correct_brkps
+    # for brkp in brkps:
+    #     plt.axvline(x=rtts[brkp], color='k', linestyle='--')
 
     # Plot predicted changepoints
-    if alg is None:
-        alg = Changepoint.PELT
-    brkps = predict_changepoints(rtts, cum_acks, alg, min_size=min_size, jump=jump,
-                                 sigma=sigma, width=width)
-    brkps = brkps[:-1]  # ignore last breakpoint
-    for brkp in brkps:
-        plt.axvline(x=rtts[brkp], color='g', linestyle='--')
+    if alg is not None:
+        brkps = predict_changepoints(rtts, cum_acks, alg, min_size=min_size, 
+                                    jump=jump, sigma=sigma, width=width)
+        brkps = brkps[:-1]  # ignore last breakpoint
+        for brkp in brkps:
+            plt.axvline(x=rtts[brkp], color='g', linestyle='--')
 
     # Save plot as pdf file
     plot_file = get_plot_filename(csv_file, alg=alg)

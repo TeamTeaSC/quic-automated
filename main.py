@@ -31,7 +31,7 @@ def main():
 
 def test_changepoint_algorithm():
     csv_file = "./csv/meta-5MB-delay0-loss0.json"
-    correct_bkps = np.array([22, 35, 46, 83, 107, 113, 143, 167, 231, 267, 310, 342])
+    correct_bkps = np.array([10, 61, 83, 107, 113, 143, 167, 231, 267, 310, 342])
     raw = read_csv_quic(csv_file)
     if raw is None:
         return
@@ -39,15 +39,16 @@ def test_changepoint_algorithm():
     rtts = raw['rtts']
     cum_acks = raw['cum_acks']
 
+    err      = None
     min_size = None
-    jump = None
-    sigma = None
-    width = None
+    jump     = None
+    sigma    = None
+    width    = None
 
-    # (min_size, jump) = best_params_pelt(rtts, cum_acks, correct_bkps)
-    # err, sigma = best_params_binseg(rtts, cum_acks, correct_bkps)
-    # err, sigma = best_params_bottomup(rtts, cum_acks, correct_bkps)
-    err, sigma, width = best_params_window(rtts, cum_acks, correct_bkps)
+    # (err, min_size, jump) = best_params_pelt(rtts, cum_acks, correct_bkps)
+    # (err, sigma) = best_params_binseg(rtts, cum_acks, correct_bkps)
+    # (err, sigma) = best_params_bottomup(rtts, cum_acks, correct_bkps)
+    # (err, sigma, width) = best_params_window(rtts, cum_acks, correct_bkps)
     
     print(f'err: {err}')
     print(f'min_size: {min_size}, jump: {jump}')
@@ -55,7 +56,7 @@ def test_changepoint_algorithm():
     print(f'width: {width}')
 
     generate_plot_quic_csv("./csv/meta-5MB-delay0-loss0.json", correct_bkps, 
-                           alg = Changepoint.PELT, min_size=min_size, jump=jump,
+                           alg = Changepoint.CUSUM, min_size=min_size, jump=jump,
                            sigma=sigma, width=width)
 
 # main()
