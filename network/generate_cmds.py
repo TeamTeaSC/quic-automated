@@ -3,13 +3,28 @@ import json
 ROOT_TRAFFIC_RATE_LIMIT = 10000000.0  # 10 Gbps
 
 def write_cmds(f, cmds: list[str]):
+    """
+    Writes list of commands @cmds to open file descriptor @f. 
+    Caller must close file descriptor @f after this function. 
+
+    Args: 
+        f: open file descriptor to write @cmds to. 
+        cmds (list[str]): list of commands to write to @f. 
+    """
     for cmd in cmds:
         f.write(f'{cmd}\n')
     f.write('\n')
 
-# Generates shell commands for provided network parameters.
-# Both writes command to file and returns commands as list of strings.
 def generate_cmds(config_file: str) -> list[str]:
+    """
+    Generates shell commands for network parameters provided in @config_file. 
+
+    Args:
+        config_file (str): JSON file containing network parameters. 
+    
+    Returns:
+        list[str]: list of command strings corresponding to network parameters.
+    """
     # Read JSON file containing network parameters
     with open(config_file) as f:
         d = json.load(f)
@@ -28,11 +43,11 @@ def generate_cmds(config_file: str) -> list[str]:
     burst_egress : int   = network_configs.get('burst_egress')
     
     # Generate commands for each parameter
-    include_loss          = (loss != 0)
-    include_delay         = (delay != 0)
-    include_jitter        = (jitter != 0)
-    include_burst_ingress = (burst_ingress != 0)
-    include_burst_egress  = (burst_egress != 0)
+    include_loss          : bool = (loss != 0)
+    include_delay         : bool = (delay != 0)
+    include_jitter        : bool = (jitter != 0)
+    include_burst_ingress : bool = (burst_ingress != 0)
+    include_burst_egress  : bool = (burst_egress != 0)
 
     loss_str = ' loss {:.6f}%'.format(loss) if include_loss else ''
     delay_str = f' delay {delay//2}.0ms' if include_delay else ''
@@ -53,10 +68,11 @@ def generate_cmds(config_file: str) -> list[str]:
     sh_file_name = (f'loss-{loss}-delay-{delay}-bw-{bw}'
                     f'{jitter_file}{burst_ingress_file}{burst_egress_file}.sh')
     sh_dir = './network'
-    f = open(f'{sh_dir}/{sh_file_name}', 'w')
+    sh_fd = open(f'{sh_dir}/{sh_file_name}', 'w')
 
     # Delete existing configurations
     cmds = []
+
     # delete root qdisc on eth0
     cmds.append('/sbin/tc qdisc del dev eth0 root')
     # delete ingress qdisc on eth0
@@ -69,10 +85,8 @@ def generate_cmds(config_file: str) -> list[str]:
     cmds.append('/usr/bin/ip link set dev ifb0 down')    
     # delete IFB interface
     cmds.append('/usr/bin/ip link delete ifb0 type ifb') 
-    write_cmds(f, cmds)
 
     # Setup HTB (hierarchical token bucket) and netem on eth0 root
-    cmds = []
     # add qdisc to eht0 root with handle 1a64: and classID 1
     cmds.append('/sbin/tc qdisc add dev eth0 root handle 1a64: htb default 1')
     # create HTB class 1a64:1
@@ -89,10 +103,8 @@ def generate_cmds(config_file: str) -> list[str]:
     cmds.append(('/sbin/tc filter add dev ens192 protocol ip parent 1a64: '
                  'prio 5 u32 match ip dst 0.0.0.0/0 match ip src 0.0.0.0/0 '
                  'flowid 1a64:104'))
-    write_cmds(f, cmds)
-
+    
     # Setup IFB for managing ingress traffic
-    cmds = []
     # load IFB kernel module
     cmds.append('modprobe ifb')
     # create new IFB interface ifb0
@@ -105,10 +117,8 @@ def generate_cmds(config_file: str) -> list[str]:
     cmds.append(('/sbin/tc filter add dev ens192 parent ffff: '
                  'protocol ip u32 match u32 0 0 flowid 1a64: '
                  'action mirred egress redirect dev ifb0'))
-    write_cmds(f, cmds)
 
     # Setup HTB and netem on IFB
-    cmds = []
     # add qdisc to IFB root with handle 1a64: and classID 1
     cmds.append('/sbin/tc qdisc add dev ifb0 root handle 1a64: htb default 1')
     # create HTB class 1a64:1 
@@ -125,8 +135,9 @@ def generate_cmds(config_file: str) -> list[str]:
     cmds.append(('/sbin/tc filter add dev ifb0 protocol ip parent 1a64: '
                  'prio 5 u32 match ip dst 0.0.0.0/0 match ip src 0.0.0.0/0 '
                  'flowid 1a64:104'))
-    write_cmds(f, cmds)
-
+    
+    write_cmds(sh_fd, cmds)
+    sh_fd.close()
     return cmds
     
 # test
