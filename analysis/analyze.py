@@ -194,10 +194,10 @@ def get_cumack_quic(pcap_file: str) -> Optional[CumAckTime]:
     return ret
 
 class CumAckRTT(NamedTuple):
-    times: list[float]
-    acks: list[int]
+    times:    list[float]
+    acks:     list[int]
     cum_acks: list[int]
-    rtts: list[float]
+    rtts:     list[float]
 
 def get_cumack_rtt(pcap_file: str, type: ProtocolType) -> Optional[CumAckRTT]:
     """ 

@@ -69,7 +69,7 @@ def correct_poly_error(mse: float, p: np.ndarray, deg: int, l: float) -> float:
 
     return mse + l * deg * np.sum(p)
 
-def get_best_polys(x, y, brkps, poly_max_deg_plus_1 : int = 4, l : float = 0.7):
+def get_best_polys(x, y, brkps, poly_max_deg : int = 3, l : float = 0.7) -> list[np.ndarray]:
     """
     Returns a list of best polynomials (with minimum error) for each segment, 
     i.e. (@x, @y) segmented by breakpoints @brkps. 
@@ -78,7 +78,7 @@ def get_best_polys(x, y, brkps, poly_max_deg_plus_1 : int = 4, l : float = 0.7):
         x (list):                   x-values. 
         y (list):                   y-values.
         brkps (list):               breakpoints (indices into @x and @y).
-        poly_max_deg_plus_1 (int):  1 + maximum degree polynomial to fit
+        poly_max_deg (int):         maximum degree polynomial to fit
         l (float):                  penalty factor for higher degree polynomials
 
     Return:
@@ -102,11 +102,11 @@ def get_best_polys(x, y, brkps, poly_max_deg_plus_1 : int = 4, l : float = 0.7):
             ys = y[start:brkps[i]]
         start = brkps[i]
 
-        # Iterate through degrees [1, poly_max_deg_plus_1) and find 
+        # Iterate through degrees [1, poly_max_deg] and find 
         # polynomial that minimizes error for this segment.
         min_error : Optional[float] = None
         best_poly : np.ndarray
-        for deg in range(1, poly_max_deg_plus_1):
+        for deg in range(1, poly_max_deg + 1):
             p : np.ndarray = np.polyfit(x, y)
             mse : float = get_poly_mse(xs, ys, p, deg)
             err : float = correct_poly_error(mse, p, deg, l)
