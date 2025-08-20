@@ -22,15 +22,14 @@ def make_dirs(DIRS: list[str]):
             os.makedirs(DIR) 
 
 # Use tshark capture packets
-def run_pcap(pcap_file: str, url_host: str, url_port: str | None, url_path: str, 
-            env):
+def run_pcap(pcap_file: str, url_host: str, url_port: str | None, url_path: str, env):
     process = subprocess.Popen([
         'tshark',
-        '-f',
+        '-f',                       # specify filter
         f'host {url_host}',         # filter for only host traffic
-        '-i'
+        '-i'                        # specify interface
         'eth0',                     # capture on eth0 interface
-        '-w',
+        '-w',                       # specify location to write results to 
         f'{pcap_file}', # write to temp file
     ], env=env)
     return process
@@ -100,14 +99,14 @@ def run_client(client: str, endpoint: str, iters: int) -> list[str]:
     print(f'--- START CLIENT: {client} ---\n')
 
     # determine if client is h2 or h3
-    is_h3 = ('h3' in client)
+    is_h3 : bool = ('h3' in client)
 
     # parse endpoint
     url_obj = urlparse(endpoint)
     url_host: str = url_obj.hostname
     url_port: str = url_obj.port
     url_path: str = url_obj.path
-    print(url_host, url_port, url_path)
+    print(f'Targeting host: {url_host}, port: {url_port}, path: {url_path}')
 
     # generate client commands
     cmds: list[str] = client_cmds(client, endpoint, url_host, url_port, url_path)
@@ -119,7 +118,7 @@ def run_client(client: str, endpoint: str, iters: int) -> list[str]:
     for i in range(iters):
         print(f'--- CLIENT {client} : ITERATION {i} ---\n')
         
-        # timestamp files
+        # get timestamp of test
         curr_time = time.strftime("%Y-%m-%d-%H:%M:%S", time.gmtime())
 
         # setup OS environment to log TLS keys
@@ -149,7 +148,8 @@ def run_client(client: str, endpoint: str, iters: int) -> list[str]:
     return outputs
 
 # Run benchmark across all clients.
-# For each client, returns a list containing all JSON output files.
+# Returns a dictionary, with client name as key, 
+# and list containing all PCAP output files as value.
 def run_benchmark(config_file: str) -> dict[str, list[str]]:
     print(f'--- START BENCHMARK ---\n')
 

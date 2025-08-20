@@ -1,169 +1,79 @@
-import numpy as np
-from bisect import bisect_left
 from analysis.changepoint import *
+from ruptures.metrics import precision_recall, hausdorff, randindex
+from typing import Optional, Tuple
 
-def get_nearest_bkp(bkp: int, bkps_correct: list[int], x_vals: np.ndarray) -> int:
-    """ Given @bkp, returns the @elem in @bkps_correct such that 
-        @x_vals[@bkp] - @elem is minimized.
+"""
+Docs: 
+- https://centre-borelli.github.io/ruptures-docs/user-guide/metrics/precisionrecall/
+- https://centre-borelli.github.io/ruptures-docs/user-guide/metrics/hausdorff/
+- https://centre-borelli.github.io/ruptures-docs/user-guide/metrics/randindex/
+"""
 
-    Args:
-        bkp (int): breakpoint index
-        bkps_correct (list): list of breakpoint indices
+# the higher the better
+def compute_f1_score(precision: float, recall: float) -> float:
+    return (2 * precision * recall) / (precision + recall)
+
+def grid_search_p(x_vals: np.ndarray, y_vals: np.ndarray, true_bkps: list, 
+                  cda_type: CDAType) -> Tuple[float, float]:
+    NUMBER_ITERS = 1e4
+    max_x = np.max(x_vals)
+    max_y = np.max(y_vals)
+    max_p = max(max_x, max_y)
+
+    best_p: Optional[float] = None
+    best_f1_score: Optional[float] = None
+
+    for i in range(1, NUMBER_ITERS + 1):
+        p = i * (max_p / NUMBER_ITERS)
+
+        match cda_type:
+            case CDAType.PELT: my_bkps = get_cp_pelt(x_vals, y_vals, p)
+            case CDAType.BINSEG: my_bkps = get_cp_binseg(x_vals, y_vals, p)
+            case CDAType.BOTTOMUP: my_bkps = get_cp_bottomup(x_vals, y_vals, p)
+            case _: 
+                print('[ERROR]: invalid CDA type provided to grid_search_p\n')
+                assert(False)  # panic
         
-    Returns:
-        value (int): @elem in @bkps_correct such that 
-                     @x_vals[@bkp] - @elem is minimized.
-    """
-    N = len(bkps_correct)
-    idx = bisect_left(bkps_correct, bkp)
-    if (idx == 0):    # bkp is smaller than every element
-        return bkps_correct[0]
-    elif (idx == N):  # bkp is larger than every element
-        return bkps_correct[N-1]
-    else:             # check if bkp is closer to left or right
-        left = bkps_correct[idx-1]
-        right = bkps_correct[idx]
+        precision, recall = precision_recall(true_bkps, my_bkps, margin=5)
+        f1_score = compute_f1_score(precision, recall)
 
-        if right >= len(x_vals):
-            return left
+        if (best_f1_score is None) or (f1_score > best_f1_score):
+            best_f1_score = f1_score 
+            best_p = p 
 
-        if np.abs(x_vals[left] - x_vals[bkp]) <= np.abs(x_vals[right] - x_vals[bkp]):
-            return left
-        else:
-            return right
+    return (best_p, best_f1_score)
 
-def changepoint_loss(bkps_pred: list[int], bkps_correct: list[int], 
-                     x_vals: np.ndarray) -> float:
-    """ Returns the total absolute distance error of @bkps_pred against 
-        @bkps_correct, using @x_vals as the distance metric.
-    
-    Args:
-        bkps_pred (list[int]): predicted breakpoints
-        bkps_correct (list[int]): correct breakpoints
-        x_vals (np.ndarray): underlying x-values
-        
-    Returns:
-        total_err (float): total absolute distance error (calculated from 
-                           @x_vals) between each breakpoint in @bkps_pred 
-                           to the nearest breakpoint in @bkps_correct
-    """
-    # Compute total distance error on the space @x_vals
-    total_err = 0.0
-    N = len(bkps_correct)
-    for i in range(N):
-        bkp = bkps_correct[i]
-        val = get_nearest_bkp(bkp, bkps_pred, x_vals)
-        err = abs(x_vals[val] - x_vals[bkp])
-        total_err += err
+def grid_search_p_width(x_vals: np.ndarray, y_vals: np.ndarray, true_bkps: list, 
+                        cda_type: CDAType) -> Tuple[float, float]:
+    NUMBER_ITERS_P = 1e4
+    NUMBER_ITERS_WIDTH = 1e2
 
-    # Penalize predicting too many breakpoints
-    n_pred = len(bkps_pred)
-    n_correct = len(bkps_correct)
-    penalty_factor = 1.0
-    penalty = penalty_factor * np.abs(n_pred - n_correct)
+    max_width = len(x_vals)
+    max_x = np.max(x_vals)
+    max_y = np.max(y_vals)
+    max_p = max(max_x, max_y)
 
-    return total_err + penalty
+    best_p: Optional[float] = None
+    best_width: Optional[int] = None
+    best_f1_score: Optional[float] = None
 
-def best_params_pelt(x_vals: np.ndarray, y_vals: np.ndarray, 
-                     bkps_correct: list[int]) -> tuple[float, int, int]:
-    N = len(x_vals)
+    for i in range(1, NUMBER_ITERS_P + 1):
+        for j in range(1, NUMBER_ITERS_WIDTH + 1):
+            p     = i * (max_p / NUMBER_ITERS_P)
+            width = j * (max_width // NUMBER_ITERS_WIDTH)
 
-    # Keep track of best error and parameters encountered so far
-    best_err = None
-    best_min_size = None
-    best_jump = None
-    
-    for min_size in range(1, N//4):  # try different values for min_size
-        for jump in range(1, 20):    # try different values for jump
-            print(f'trying min_size = {min_size}, jump = {jump}')
-            bkps_pred = predict_changepoints_pelt(x_vals, y_vals, 
-                            min_size=min_size, jump=jump)
-            bkps_pred = bkps_pred[:-1]  # discard last item
-            err = changepoint_loss(bkps_pred, bkps_correct, x_vals)
-            print(f'err is = {err}')
+            match cda_type:
+                case CDAType.WINDOW: my_bkps = get_cp_window(x_vals, y_vals, p)
+                case _: 
+                    print('[ERROR]: invalid CDA type provided to grid_search_p_width\n')
+                    assert(False)  # panic
 
-            # Save best error and parameters
-            if (best_err is None) or (err <= best_err):
-                best_err = err
-                best_min_size = min_size
-                best_jump = jump
+            precision, recall = precision_recall(true_bkps, my_bkps, margin=5)
+            f1_score = compute_f1_score(precision, recall)
 
-    # Return best parameters
-    return (best_err, best_min_size, best_jump)
+            if (best_f1_score is None) or (f1_score > best_f1_score):
+                best_f1_score = f1_score 
+                best_p = p 
+                best_width = width 
 
-def best_params_binseg(x_vals: np.ndarray, y_vals: np.ndarray, 
-                       bkps_correct: list[int]) -> tuple[float, float]:
-    N = len(x_vals)
-
-    # Keep track of best error and parameters encountered so far
-    best_err = None
-    best_sigma = None
-
-    delta = 10000
-    num_iters = 100
-    for i in range(1, num_iters + 1):
-        sigma = i * delta
-        bkps_pred = predict_changepoints_binseg(x_vals, y_vals, sigma=sigma)
-        err = changepoint_loss(bkps_pred, bkps_correct, x_vals)
-
-        # Save best error and parameters
-        if (best_err is None) or (err <= best_err):
-            best_err = err
-            best_sigma = sigma
-    
-    # Return best parameters
-    return (best_err, best_sigma)
-
-def best_params_bottomup(x_vals: np.ndarray, y_vals: np.ndarray, 
-                         bkps_correct: list[int]) -> tuple[float, float]:
-    N = len(x_vals)
-
-    # Keep track of best error and parameters encountered so far
-    best_err = None
-    best_sigma = None
-
-    delta = 10000
-    num_iters = 100
-    for i in range(1, num_iters + 1):
-        sigma = i * delta
-        bkps_pred = predict_changepoints_bottomup(x_vals, y_vals, sigma=sigma)
-        err = changepoint_loss(bkps_pred, bkps_correct, x_vals)
-
-        # Save best error and parameters
-        if (best_err is None) or (err <= best_err):
-            best_err = err
-            best_sigma = sigma
-    
-    # Return best parameters
-    return (best_err, best_sigma)
-
-def best_params_window(x_vals: np.ndarray, y_vals: np.ndarray, 
-                         bkps_correct: list[int]) -> tuple[float, float, int]:
-    N = len(x_vals)
-
-    # Keep track of best error and parameters encountered so far
-    best_err = None
-    best_sigma = None
-    best_width = None
-
-    delta = 0.1
-    num_iters = 100
-    for i in range(1, num_iters + 1):
-        sigma = i * delta
-        for width in range(1, N//4):
-            print(f'Trying sigma: {sigma}, width: {width}')
-            try:
-                bkps_pred = predict_changepoints_window(x_vals, y_vals, sigma=sigma,
-                                                        width=width)
-            except:
-                continue
-            err = changepoint_loss(bkps_pred, bkps_correct, x_vals)
-
-            # Save best error and parameters
-            if (best_err is None) or (err <= best_err):
-                best_err = err
-                best_sigma = sigma
-                best_width = width
-    
-    # Return best parameters
-    return (best_err, best_sigma, best_width)
+    return (best_p, best_width, best_f1_score)

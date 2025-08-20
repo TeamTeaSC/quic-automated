@@ -1,49 +1,13 @@
 import numpy as np
 import ruptures as rpt
-from typing import Optional
-from enum import Enum
 from utils.logging import *
 
-class Changepoint(Enum):
-    """
-    This class is an enum type for changepoint algorithms.
-    """
-    PELT = 0
-    BINSEG = 1
-    BOTTOMUP = 2
-    WINDOW = 3
-    CUSUM = 4
-
-def predict_changepoints(x_vals: np.ndarray, y_vals: np.ndarray, alg: Changepoint,
-                         min_size: Optional[int] = None,
-                         jump: Optional[int] = None,
-                         sigma: Optional[float] = None,
-                         width: Optional[int] = None) -> list:
-    """ Runs the specified changepoint detection algorithm specified by @alg,
-        on @x_vals and @y_vals.
-    
-    Args:
-        x_vals (np.ndarray): 1-dimensional array of x-values.
-        y_vals (np.ndarray): 1-dimensional array of y-values.
-        alg (Changepoint): changepoint detection algorithm to be run.
-        
-    Returns:
-        bkps (list): breakpoints (index into x_vals)
-    """
-    match alg:
-        case Changepoint.PELT: 
-            return predict_changepoints_pelt(x_vals, y_vals, min_size=min_size, jump=jump)
-        case Changepoint.BINSEG: 
-            return predict_changepoints_binseg(x_vals, y_vals, sigma=sigma)
-        case Changepoint.BOTTOMUP: 
-            return predict_changepoints_bottomup(x_vals, y_vals, sigma=sigma)
-        case Changepoint.WINDOW: 
-            return predict_changepoints_window(x_vals, y_vals, sigma=sigma, width=width)
-        case Changepoint.CUSUM:
-            return predict_changepoints_cusum(x_vals, y_vals)
-        case _:  # invalid alg 
-            print(f'[changepoint.py]: invalid @alg')
-            return []
+class CDAType(Enum):
+    PELT     = 1
+    BINSEG   = 2
+    BOTTOMUP = 3
+    WINDOW   = 4
+    CUSUM    = 5
         
 def post_process_changepoints(x_vals: np.ndarray, y_vals: np.ndarray, 
                               bkps: list) -> list:
@@ -70,124 +34,66 @@ def post_process_changepoints(x_vals: np.ndarray, y_vals: np.ndarray,
 
     return post_process_bkps
 
-
-def predict_changepoints_pelt(x_vals: np.ndarray, y_vals: np.ndarray,
-                              min_size: Optional[int] = None, 
-                              jump: Optional[int] = None) -> list:
-    """ Predict changepoints in 2-dimensional data using PELT
-        (Pruned Exact Linear Time) algorithm (offline method).
-    
-    Args:
-        x_vals (np.ndarray): 1-dimensional array of x-values.
-        y_vals (np.ndarray): 1-dimensional array of y-values.
-        
-    Returns:
-        bkps (list): breakpoints (index into x_vals)
+def get_cp_pelt(x_vals: np.ndarray, y_vals: np.ndarray, p: float) -> list:
+    """
+    Docs: https://centre-borelli.github.io/ruptures-docs/user-guide/detection/pelt/
     """
     signal = np.column_stack((x_vals, y_vals))
-    model = "l2"  # use L2 norm (better for 2-dimensional data)
+    model = 'l1'
     n = len(x_vals)
 
-    if min_size is None:
-        min_size = max(5, n // 10)
-        min_size = min(20, min_size)
-    
-    if jump is None:
-        jump = 5
+    algo = rpt.Pelt(model=model, min_size=3, jump=5).fit(signal)
+    my_bkps = algo.predict(pen=p * np.log(n))
+    return my_bkps
 
-    algo = rpt.Pelt(model=model, min_size=min_size, jump=jump).fit(signal)
-    bkps = algo.predict(pen=10)
-    return bkps
-
-def predict_changepoints_binseg(x_vals: np.ndarray, y_vals: np.ndarray,
-                                sigma: Optional[float] = None) -> list:
-    """ Predict changepoints in 2-dimensional data using Binary
-        Segmentation algorithm (offline method).
-    
-    Args:
-        x_vals (np.ndarray): 1-dimensional array of x-values.
-        y_vals (np.ndarray): 1-dimensional array of y-values.
-        
-    Returns:
-        bkps (list): breakpoints (index into x_vals)
+def get_cp_binseg(x_vals: np.ndarray, y_vals: np.ndarray, p: float) -> list:
+    """ 
+    Docs: https://centre-borelli.github.io/ruptures-docs/user-guide/detection/binseg/
     """
-    # Parameters for Binary Segmentation algorithm
+    signal = np.column_stack((x_vals, y_vals))
+    model = 'l2'
     n = len(x_vals)
     dim = 2
     
-    # Provide default value for @sigma if None
-    if sigma is None:
-        sigma = 10.0 
-
-    signal = np.column_stack((x_vals, y_vals))
-    model = "l2"  # use L2 norm (better for 2-dimensional data)
     algo = rpt.Binseg(model=model).fit(signal)
-    bkps = algo.predict(pen=np.log(n) * dim * sigma**2)
-    return bkps
+    my_bkps = algo.predict(pen=np.log(n) * dim * p**2)
+    return my_bkps
 
-def predict_changepoints_bottomup(x_vals: np.ndarray, y_vals: np.ndarray,
-                                  sigma: Optional[float] = None) -> list:
-    """ Predict changepoints in 2-dimensional data using Bottom-up
-        segmentation algorithm (offline method).
-    
-    Args:
-        x_vals (np.ndarray): 1-dimensional array of x-values.
-        y_vals (np.ndarray): 1-dimensional array of y-values.
-        
-    Returns:
-        bkps (list): breakpoints (index into x_vals)
+def get_cp_bottomup(x_vals: np.ndarray, y_vals: np.ndarray, p: float) -> list:
     """
-    # Parameters for Bottom-up Segmentation algorithm
+    Docs: https://centre-borelli.github.io/ruptures-docs/user-guide/detection/bottomup/
+    """
+    signal = np.column_stack((x_vals, y_vals))
+    model = 'l2'
     n = len(x_vals)
     dim = 2
-
-    # Provide default value for @sigma if None
-    if sigma is None:
-        sigma = 10.0
-
-    signal = np.column_stack((x_vals, y_vals))
-    model = "l2"  # use L2 norm (better for 2-dimensional data)
+    
     algo = rpt.BottomUp(model=model).fit(signal)
-    bkps = algo.predict(pen=np.log(n) * dim * sigma**2)
-    return bkps
+    my_bkps = algo.predict(pen=np.log(n) * dim * p**2)
+    return my_bkps
 
-def predict_changepoints_window(x_vals: np.ndarray, y_vals: np.ndarray,
-                                sigma: Optional[float] = None,
-                                width: Optional[int] = None) -> list:
-    """ Predict changepoints in 2-dimensional data using Window-sliding
-        segmentation algorithm (offline method).
-    
-    Args:
-        x_vals (np.ndarray): 1-dimensional array of x-values.
-        y_vals (np.ndarray): 1-dimensional array of y-values.
-        
-    Returns:
-        bkps (list): breakpoints (index into x_vals)
+def get_cp_window(x_vals: np.ndarray, y_vals: np.ndarray, p: float, width: int) -> list:
     """
-    # Parameters for Window-sliding Segmentation algorithm
+    Docs: https://centre-borelli.github.io/ruptures-docs/user-guide/detection/window/
+    """
+    signal = np.column_stack((x_vals, y_vals))
+    model = "l2"  # "l1", "rbf", "linear", "normal", "ar"
     n = len(x_vals)
     dim = 2
 
-    # Provide default value for @sigma if None
-    if sigma is None:
-        sigma = 3.0
-
-    # Provide default value for @width if None
-    if width is None:
-        width = 3 
-        
-    signal = np.column_stack((x_vals, y_vals))
-    model = "l2"  # use L2 norm (better for 2-dimensional data)
     algo = rpt.Window(width=width, model=model).fit(signal)
-    bkps = algo.predict(pen=np.log(n) * dim * sigma**2)
-    return bkps
+    my_bkps = algo.predict(pen=np.log(n) * dim * p**2)
+    return my_bkps
 
-def predict_changepoints_cusum(x_vals: np.ndarray, y_vals: np.ndarray, 
-                               threshold: float = 28.0, drift: float = 0.0):
+def get_cp_cusum(x_vals: np.ndarray, y_vals: np.ndarray, threshold: float = 28.0, 
+                 drift: float = 1.0) -> list:
     # Initialize parameters for CUSUM
     y_len  = len(y_vals)
     y_mean = np.mean(y_vals)
     y_std  = np.std(y_vals)
+
+    drift = 1.0
+    threshold = 10.0
     
     # Initialize cumulative sums in positive and negative directions
     s_pos = np.zeros(y_len)
@@ -209,5 +115,5 @@ def predict_changepoints_cusum(x_vals: np.ndarray, y_vals: np.ndarray,
             s_pos[i] = 0
             s_neg[i] = 0 
     
-    bkps = post_process_changepoints(x_vals, y_vals, bkps)
+    # bkps = post_process_changepoints(x_vals, y_vals, bkps)
     return bkps

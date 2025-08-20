@@ -7,7 +7,7 @@ from enum import Enum
 ACK_TYPE = '0x0000000000000002'
 
 class ProtocolType(Enum):
-    PROTOCOL_TCP  = 1 
+    PROTOCOL_TCP  = 1
     PROTOCOL_QUIC = 2
 
 # --- Helper Functions ---
